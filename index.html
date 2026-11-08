@@ -189,7 +189,7 @@ details summary{cursor:pointer;font-weight:600;color:var(--fg)}
       <div class="row" style="margin-top:10px"><label for="hcs">HC de</label><input id="hcs" type="time" value="22:00"><label for="hce">à</label><input id="hce" type="time" value="06:00"></div>
       <div class="prices" id="prices"></div>
       <div class="row" style="margin-top:12px"><label for="relay">Adresse du relais Kelwatt</label>
-        <input id="relay" type="url" inputmode="url" placeholder="https://mon-tempo.xxx.workers.dev" style="flex:1 1 220px"></div>
+        <input id="relay" type="url" inputmode="url" placeholder="Vide = Kelwatt désactivé" style="flex:1 1 220px"></div>
       <p class="tip">Les tarifs pré-remplis sont des exemples : remplace-les par ceux de ta facture (€/kWh TTC). Tout reste enregistré sur ton téléphone.</p>
     </details>
   </section>
@@ -314,7 +314,9 @@ async function getDay(which,fallbackDate){
 }
 
 /* Source prioritaire : Kelwatt, via ton relais Cloudflare */
-function relayURL(){return (store.get("relay","")||"").trim()}
+const DEFAULT_RELAY="https://mon-tempo.jerome-zabe.workers.dev";
+// Relais par défaut ; un champ vidé volontairement désactive Kelwatt
+function relayURL(){const v=store.get("relay",null);return (v===null?DEFAULT_RELAY:v).trim()}
 async function fromKelwatt(){
   const u=relayURL();if(!u)return null;
   try{const j=await getJSON(u);if(j&&j.status==="ok"&&validDay(j.today)&&validDay(j.tomorrow))return j}catch(e){}
