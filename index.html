@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#06080f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tempo">
+<title>Mon Tempo</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;700;800&family=Sora:wght@400;600&family=Martian+Mono:wght@400;700&display=swap">
+<style>
+/* Thème « nuit électrique » : fond sombre vivant teinté par la couleur du jour,
+   carte Demain en héros façon voyant lumineux, panneaux en verre fumé. */
+:root{
+  --bg:#06080f; --bg2:#0c1120; --glass:rgba(255,255,255,.045); --glass2:rgba(255,255,255,.08);
+  --line:rgba(255,255,255,.09); --fg:#eef2ff; --muted:#8c96b3;
+  --bleu:#3d8bff; --bleu2:#7fb4ff; --blanc:#f4f6ff; --blanc-fg:#151a2b; --rouge:#ff3b4e; --rouge2:#ff8a4c;
+  --gris:#5b6480; --ok:#3ef0a0; --mood:#7a6cff;
+  --display:"Unbounded","Arial Black",system-ui,sans-serif;
+  --body:"Sora",system-ui,sans-serif;
+  --mono:"Martian Mono",ui-monospace,monospace;
+  color-scheme:dark;
+}
+body[data-mood="1"]{--mood:var(--bleu)} body[data-mood="2"]{--mood:#c9d3ff} body[data-mood="3"]{--mood:var(--rouge)}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--body);
+  padding:env(safe-area-inset-top,0px) max(16px,env(safe-area-inset-right,0px)) calc(28px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+  background-image:radial-gradient(120% 60% at 50% -10%,color-mix(in srgb,var(--mood) 28%,transparent),transparent 70%),radial-gradient(80% 50% at 100% 100%,color-mix(in srgb,var(--mood) 10%,transparent),transparent 70%);
+  background-attachment:fixed;transition:background-color .6s}
+#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+main{position:relative;z-index:1;max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-top:18px}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+h1{font-family:var(--display);font-weight:800;font-size:28px;margin:0;letter-spacing:-.03em;line-height:1;
+  background:linear-gradient(90deg,var(--bleu) 0 30%,var(--blanc) 38% 62%,var(--rouge) 70%);-webkit-background-clip:text;background-clip:text;color:transparent}
+h1 span{-webkit-text-fill-color:initial;color:#ffd84a;filter:drop-shadow(0 0 8px #ffd84a88)}
+h2{font-family:var(--display);font-size:11px;text-transform:uppercase;letter-spacing:.16em;color:var(--muted);margin:0 0 12px;font-weight:600}
+.clock{font-family:var(--mono);font-size:13px;color:var(--fg);background:var(--glass2);border:1px solid var(--line);padding:6px 10px;border-radius:999px}
+.clock::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:7px;box-shadow:0 0 8px var(--ok);vertical-align:1px}
+
+/* Voyants Aujourd'hui / Demain */
+.days{display:grid;grid-template-columns:1fr;gap:12px}
+.day{border-radius:26px;padding:20px;display:flex;flex-direction:column;justify-content:space-between;gap:18px;position:relative;overflow:hidden;
+  background:linear-gradient(160deg,var(--bg2),var(--bg));border:1px solid var(--line);--k:var(--gris);--k2:var(--gris)}
+.day[data-c="1"]{--k:var(--bleu);--k2:var(--bleu2)} .day[data-c="2"]{--k:var(--blanc);--k2:#b9c6ff} .day[data-c="3"]{--k:var(--rouge);--k2:var(--rouge2)}
+.day:not([data-c="0"]){border-color:color-mix(in srgb,var(--k) 55%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--k) 25%,transparent) inset,0 18px 50px -18px color-mix(in srgb,var(--k) 70%,transparent)}
+#d1{order:-1;min-height:220px}
+#d0{min-height:0;flex-direction:row;align-items:center;padding:16px 20px}
+#d0 .col{font-size:22px;margin-left:auto;margin-right:92px;max-width:none} #d0 .orb{width:70px;height:70px;right:16px;top:50%;margin-top:-35px} #d0 .emo{display:none}
+.day .lbl{font-family:var(--display);font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--k2);font-weight:600}
+.day[data-c="0"] .lbl{color:var(--muted)}
+.day .date{font-size:14px;color:var(--muted);text-transform:capitalize}
+.day .col{font-family:var(--display);font-size:44px;font-weight:800;letter-spacing:-.03em;line-height:.95;color:var(--k);text-shadow:0 0 24px color-mix(in srgb,var(--k) 60%,transparent);position:relative;z-index:1;max-width:65%}
+.day[data-c="0"] .col{color:var(--muted);text-shadow:none;font-size:20px!important;font-weight:600}
+.orb{position:absolute;right:-30px;top:-30px;width:180px;height:180px;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,#fff 0 4%,var(--k2) 18%,var(--k) 45%,transparent 72%);opacity:.85;filter:blur(1px)}
+.day[data-c="0"] .orb{background:none;border:2px dashed var(--gris);opacity:.6;width:120px;height:120px;right:20px;top:24px}
+.day .emo{position:absolute;right:22px;bottom:16px;font-size:34px;filter:drop-shadow(0 0 12px var(--k))}
+.day[data-c="0"] .emo{bottom:auto;top:66px;right:62px;filter:none;opacity:.7}
+
+/* Panneaux */
+.card{background:var(--glass);border-radius:22px;padding:18px;border:1px solid var(--line);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.status{display:flex;gap:12px;align-items:center;font-weight:600}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--ok);flex:none;box-shadow:0 0 12px currentColor}
+.status small{display:block;font-weight:400;color:var(--muted);font-family:var(--mono);font-size:12px}
+.tip{margin:12px 0 0;color:var(--muted);font-size:14px}
+.counts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.cnt{background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:12px 10px}
+.cnt .n{font-family:var(--display);font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.cnt:nth-child(1) .n{color:var(--bleu);text-shadow:0 0 16px #3d8bff66}.cnt:nth-child(2) .n{color:var(--blanc);text-shadow:0 0 16px #ffffff55}.cnt:nth-child(3) .n{color:var(--rouge);text-shadow:0 0 16px #ff3b4e66}
+.cnt .t{font-size:11px;color:var(--muted);margin-top:6px}
+.bar{height:6px;border-radius:3px;background:var(--glass2);margin-top:8px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:3px;box-shadow:0 0 10px currentColor}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.cal span{aspect-ratio:1;border-radius:9px;background:var(--glass2);font-size:11px;display:grid;place-items:center;font-family:var(--mono);color:var(--muted)}
+.cal span[data-c="1"]{background:var(--bleu);color:#fff;box-shadow:0 0 10px -2px var(--bleu)}
+.cal span[data-c="2"]{background:var(--blanc);color:var(--blanc-fg);box-shadow:0 0 10px -2px #fff}
+.cal span[data-c="3"]{background:var(--rouge);color:#fff;box-shadow:0 0 12px -1px var(--rouge)}
+.cal .wd{background:none;aspect-ratio:auto;font-family:var(--display);font-size:10px;box-shadow:none}
+.cal .today{outline:2px solid #ffd84a;outline-offset:2px}
+.navm{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.navm b{text-transform:capitalize;font-family:var(--display);font-weight:600;font-size:15px}
+button,select,input{font:inherit;color:inherit}
+.btn{background:var(--glass2);border:1px solid var(--line);border-radius:12px;padding:9px 14px;cursor:pointer;color:var(--fg);transition:transform .15s,background .2s}
+.btn:hover{background:rgba(255,255,255,.14)} .btn:active{transform:scale(.96)}
+#notif,#share{border-radius:999px}
+.btn:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid #ffd84a;outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row label{font-size:13px;color:var(--muted)}
+select,input{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:12px;padding:9px 11px;min-width:0;color:var(--fg)}
+select option{background:#0c1120}
+.calc-out{margin-top:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.calc-out div{border-radius:14px;padding:10px 6px;font-family:var(--mono);font-size:15px;font-weight:700;text-align:center}
+.calc-out div small{display:block;font-family:var(--display);font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:4px;opacity:.8}
+.cb{background:color-mix(in srgb,var(--bleu) 22%,transparent);color:var(--bleu2);border:1px solid color-mix(in srgb,var(--bleu) 50%,transparent)}
+.cw{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.35)}
+.cr{background:color-mix(in srgb,var(--rouge) 22%,transparent);color:#ff8f9a;border:1px solid color-mix(in srgb,var(--rouge) 55%,transparent)}
+.err{background:color-mix(in srgb,var(--rouge) 16%,transparent);border:1px solid color-mix(in srgb,var(--rouge) 45%,transparent);color:#ffc2c8;border-radius:18px;padding:14px;display:flex;justify-content:space-between;gap:10px;align-items:center}
+details summary{cursor:pointer;font-weight:600;color:var(--fg)}
+.prices{display:grid;grid-template-columns:auto 1fr 1fr;gap:6px 8px;align-items:center;margin-top:10px;font-size:13px}
+.prices input{width:100%;font-family:var(--mono)}
+.foot{font-size:11px;color:var(--muted);text-align:center;font-family:var(--mono)}
+.alertband{border-radius:20px;padding:16px 18px;font-family:var(--display);font-weight:700;font-size:15px;color:#fff;background:linear-gradient(90deg,var(--bleu),#1d4fb8);box-shadow:0 10px 40px -10px var(--bleu)}
+.alertband[data-c="2"]{background:linear-gradient(90deg,#fff,#cfd8ff);color:var(--blanc-fg);box-shadow:0 10px 40px -10px #fff}
+.alertband[data-c="3"]{background:linear-gradient(90deg,var(--rouge),var(--rouge2));box-shadow:0 10px 40px -10px var(--rouge)}
+.tbl{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.tbl th,.tbl td{padding:7px 4px;text-align:right;border-bottom:1px solid var(--line)}
+.tbl th{font-family:var(--display);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl td.num{font-family:var(--mono)}
+.sw{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:-1px;box-shadow:0 0 8px currentColor}
+.big{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.big div{background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:12px}
+.big b{display:block;font-family:var(--display);font-weight:800;font-size:20px;margin:2px 0;letter-spacing:-.02em}
+.big small{color:var(--muted);font-size:11px}
+.tbl input{width:100%;min-width:76px;text-align:right;font-family:var(--mono);padding:7px 9px}
+.good{color:var(--ok);text-shadow:0 0 14px #3ef0a066}.bad{color:#ff6b7a}
+.toast{position:fixed;z-index:5;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#ffd84a;color:#141000;font-weight:700;padding:10px 18px;border-radius:999px;font-size:13px;box-shadow:0 8px 30px -6px #ffd84a99}
+@media (prefers-reduced-motion:no-preference){
+  .day{animation:rise .6s cubic-bezier(.2,.8,.2,1) both} #d0{animation-delay:.1s}
+  .orb{animation:breathe 4s ease-in-out infinite}
+  .day[data-c="3"] .orb{animation-duration:1.6s}
+  .day[data-c="0"] .orb{animation:spin 14s linear infinite}
+  .card{animation:rise .6s .15s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes rise{from{transform:translateY(14px);opacity:0}}
+  @keyframes breathe{50%{transform:scale(1.08);opacity:1}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+}
+</style>
+</head>
+<body>
+<canvas id="fx" aria-hidden="true"></canvas>
+<main>
+  <header><h1>Mon Tempo <span>⚡</span></h1><span class="clock" id="clock"></span></header>
+
+  <div id="err" class="err" hidden><span id="errmsg">Impossible de récupérer les couleurs.</span><button class="btn" id="retry">Réessayer</button></div>
+
+  <section class="days">
+    <div class="day" id="d0" data-c="0"><div><div class="lbl">Aujourd'hui</div><div class="date"></div></div><div class="orb"></div><div class="col">…</div><div class="emo"></div></div>
+    <div class="day" id="d1" data-c="0"><div><div class="lbl">Demain</div><div class="date"></div></div><div class="orb"></div><div class="col">…</div><div class="emo"></div></div>
+  </section>
+
+  <section class="card">
+    <div class="status"><span class="dot" id="hdot"></span><div><span id="hnow">—</span><small id="hnext"></small></div></div>
+    <p class="tip" id="tip"></p>
+    <div class="row" style="margin-top:10px"><button class="btn" id="share">📋 Copier la couleur de demain</button><button class="btn" id="notif">🔔 Activer les alertes</button></div>
+    <p class="tip" id="notifinfo" hidden></p>
+  </section>
+
+  <div class="alertband" id="alertband" hidden></div>
+
+  <section class="card">
+    <h2>Jours restants · saison <span id="season"></span></h2>
+    <div class="counts" id="counts"></div>
+    <p class="tip" id="redinfo"></p>
+  </section>
+
+  <section class="card">
+    <div class="navm"><button class="btn" id="prev" aria-label="Mois précédent">‹</button><b id="mname"></b><button class="btn" id="next" aria-label="Mois suivant">›</button></div>
+    <div class="cal" id="cal"></div>
+  </section>
+
+  <section class="card">
+    <h2>Combien ça coûte ?</h2>
+    <div class="row">
+      <label for="appl">Appareil</label>
+      <select id="appl">
+        <option value="0.9">Lave-linge (cycle 40°)</option>
+        <option value="2.5">Sèche-linge</option>
+        <option value="1.2">Lave-vaisselle</option>
+        <option value="1.5">Four (1 h)</option>
+        <option value="2">Radiateur 2 kW (1 h)</option>
+        <option value="7">Recharge voiture (+40 km)</option>
+        <option value="2.2">Ballon d'eau chaude (1 h)</option>
+      </select>
+      <input id="kwh" type="number" step="0.1" min="0" inputmode="decimal" style="width:80px" aria-label="kWh"> <label for="kwh">kWh</label>
+    </div>
+    <div class="row" style="margin-top:8px"><label for="when">Créneau</label>
+      <select id="when"><option value="hp">Heures pleines</option><option value="hc">Heures creuses</option></select></div>
+    <div class="calc-out" id="calc"></div>
+    <details style="margin-top:12px">
+      <summary>Mes tarifs et heures creuses</summary>
+      <div class="row" style="margin-top:10px"><label for="hcs">HC de</label><input id="hcs" type="time" value="22:00"><label for="hce">à</label><input id="hce" type="time" value="06:00"></div>
+      <div class="prices" id="prices"></div>
+      <div class="row" style="margin-top:12px"><label for="relay">Adresse du relais Kelwatt</label>
+        <input id="relay" type="url" inputmode="url" placeholder="https://mon-tempo.xxx.workers.dev" style="flex:1 1 220px"></div>
+      <p class="tip">Les tarifs pré-remplis sont des exemples : remplace-les par ceux de ta facture (€/kWh TTC). Tout reste enregistré sur ton téléphone.</p>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Ma consommation</h2>
+    <p class="tip" style="margin-top:0">Saisis tes kWh par couleur (sur ta facture, ou sur l'écran du Linky qui affiche 6 compteurs Tempo).</p>
+    <div class="row" style="margin-top:8px">
+      <label for="mmode">Je saisis</label>
+      <select id="mmode"><option value="idx">les index du compteur</option><option value="kwh">les kWh consommés</option></select>
+    </div>
+    <div class="row" style="margin-top:8px" id="refrow">
+      <label for="refdate">Référence relevée le</label>
+      <input id="refdate" type="date">
+      <button class="btn" id="newref">↻ Prendre l'index actuel comme nouvelle référence</button>
+    </div>
+    <div style="overflow-x:auto;margin-top:10px"><table class="tbl" id="mtable"></table></div>
+    <div class="row" style="margin-top:8px">
+      <label for="base">Prix option Base pour comparer</label>
+      <input id="base" type="number" step="0.0001" value="0.1940" style="width:90px"> <label for="base">€/kWh</label>
+    </div>
+    <div id="mres" style="margin-top:12px"></div>
+    <details style="margin-top:6px">
+    <summary>Importer un fichier CSV à la place</summary>
+    <p class="tip">Export Enedis « Mes données », EDF ou compteur : chaque relevé est associé à sa couleur Tempo.</p>
+    <div class="row" style="margin-top:10px">
+      <label class="btn" for="csv" style="color:var(--fg)">📂 Choisir un fichier CSV</label>
+      <input id="csv" type="file" accept=".csv,.txt,text/csv" hidden>
+      <label for="unit">Unité</label>
+      <select id="unit"><option value="auto">Auto</option><option value="W">W (puissance moyenne)</option><option value="Wh">Wh</option><option value="kWh">kWh</option></select>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label for="hpshare">Part en heures pleines (si relevés journaliers)</label>
+      <input id="hpshare" type="number" min="0" max="100" value="65" style="width:70px"> <label for="hpshare">%</label>
+    </div>
+    <div id="conso" style="margin-top:12px"></div>
+    </details>
+  </section>
+
+  <p class="foot">Couleurs RTE via <span id="src">api-couleur-tempo.fr</span> · <span id="upd"></span></p>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const API="https://www.api-couleur-tempo.fr/api";
+const C={0:{n:"Inconnue",e:"❔"},1:{n:"Bleu",e:"💧"},2:{n:"Blanc",e:"❄️"},3:{n:"Rouge",e:"🔥"}};
+const TIPS={
+ 0:"Couleur pas encore publiée. Elle tombe en général en fin de matinée la veille.",
+ 1:"Jour bleu : c'est le moment de lancer les grosses machines, recharger la voiture et faire chauffer l'eau.",
+ 2:"Jour blanc : prix un peu plus élevés. Privilégie les heures creuses pour les gros appareils.",
+ 3:"Jour rouge : heures pleines très chères (6h-22h). Baisse le chauffage d'un ou deux degrés et décale tout en heures creuses."
+};
+const DEF_PRICES={1:[0.1325,0.1612],2:[0.1499,0.1871],3:[0.1575,0.7060]};
+const $=id=>document.getElementById(id);
+const store={get(k,d){try{const v=localStorage.getItem("tempo_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("tempo_"+k,JSON.stringify(v))}catch(e){}}};
+
+/* ---------- Ambiance animée : gouttes (bleu), flocons (blanc), braises (rouge) ---------- */
+const fx=(()=>{
+  const cv=document.getElementById("fx"),ctx=cv.getContext("2d");
+  const still=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let mode=-1,parts=[],W=0,H=0,dpr=1,raf=0;
+  function size(){dpr=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}
+  function make(init){
+    const p={x:Math.random()*W,y:init?Math.random()*H:(mode===3?H+10:-10),s:Math.random(),w:Math.random()*Math.PI*2};
+    if(mode===1){p.vy=2.5+p.s*4;p.vx=-.4;p.len=8+p.s*16}
+    else if(mode===2){p.vy=.4+p.s*1.1;p.vx=0;p.r=1+p.s*2.6}
+    else if(mode===3){p.vy=-(.6+p.s*1.6);p.vx=0;p.r=.8+p.s*2.2;p.life=1}
+    else{p.vy=.15+p.s*.3;p.vx=0;p.r=.6+p.s*1.2}
+    return p;
+  }
+  function frame(){
+    ctx.clearRect(0,0,W,H);
+    for(const p of parts){
+      p.w+=.02; p.y+=p.vy; p.x+=p.vx+(mode===2?Math.sin(p.w)*.5:mode===3?Math.sin(p.w*1.7)*.6:0);
+      if(mode===1){ctx.strokeStyle=`rgba(127,180,255,${.15+p.s*.35})`;ctx.lineWidth=1+p.s;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+p.vx*3,p.y-p.len);ctx.stroke()}
+      else{
+        let col=mode===2?`rgba(255,255,255,${.35+p.s*.5})`:mode===3?`rgba(${255},${90+p.s*120|0},${60},${(.4+p.s*.6)*Math.max(0,p.y/H)})`:`rgba(160,150,255,${.15+p.s*.25})`;
+        ctx.fillStyle=col;ctx.shadowColor=mode===3?"#ff5a3c":mode===2?"#fff":"transparent";ctx.shadowBlur=mode===0?0:8;
+        ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,7);ctx.fill();ctx.shadowBlur=0;
+      }
+      if(p.y>H+20||p.y<-30||p.x<-20||p.x>W+20)Object.assign(p,make(false));
+    }
+    raf=requestAnimationFrame(frame);
+  }
+  function set(m){
+    if(m===mode)return; mode=m; size();
+    const n=Math.round((mode===1?70:mode===2?60:mode===3?55:30)*Math.min(1.6,W/420));
+    parts=Array.from({length:n},()=>make(true));
+    cancelAnimationFrame(raf);
+    if(still){frame();cancelAnimationFrame(raf)}else frame();
+  }
+  addEventListener("resize",()=>{const m=mode;mode=-1;set(m)});
+  document.addEventListener("visibilitychange",()=>{if(document.hidden)cancelAnimationFrame(raf);else if(!still){cancelAnimationFrame(raf);frame()}});
+  return {set};
+})();
+
+let days=store.get("days",{}); // {"2026-11-08":1}
+let today=null,tomorrow=null;
+let viewMonth=new Date(); viewMonth.setDate(1);
+
+const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const fmt=(s,o)=>new Date(s+"T12:00:00").toLocaleDateString("fr-FR",o||{weekday:"long",day:"numeric",month:"long"});
+function seasonOf(d){const y=d.getMonth()>=8?d.getFullYear():d.getFullYear()-1;return y+"-"+(y+1)}
+
+async function getJSON(u){
+  const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),8000);
+  try{const r=await fetch(u,{cache:"no-store",signal:ctl.signal});if(!r.ok)throw new Error(r.status);return await r.json()}
+  finally{clearTimeout(tm)}
+}
+
+/* Source de secours : calendrier-tempo.fr ({status,date,couleur,code}) */
+const API2="https://www.calendrier-tempo.fr/api";
+let source="api-couleur-tempo.fr";
+function fromBackup(j,fallbackDate){
+  const ok=j&&j.status==="ok"&&[1,2,3].includes(+j.code);
+  return {dateJour:(j&&j.date)||fallbackDate,codeJour:ok?+j.code:0};
+}
+function validDay(j){return j&&typeof j.dateJour==="string"&&[0,1,2,3].includes(+j.codeJour)}
+async function getDay(which,fallbackDate){
+  try{const j=await getJSON(API+"/jourTempo/"+which);if(validDay(j))return {j,src:1}}catch(e){}
+  const j=await getJSON(API2+"/"+which);return {j:fromBackup(j,fallbackDate),src:2};
+}
+
+/* Source prioritaire : Kelwatt, via ton relais Cloudflare */
+function relayURL(){return (store.get("relay","")||"").trim()}
+async function fromKelwatt(){
+  const u=relayURL();if(!u)return null;
+  try{const j=await getJSON(u);if(j&&j.status==="ok"&&validDay(j.today)&&validDay(j.tomorrow))return j}catch(e){}
+  return null;
+}
+
+async function load(){
+  $("err").hidden=true;
+  try{
+    const now=new Date(), s=seasonOf(now), tmr=new Date(now);tmr.setDate(tmr.getDate()+1);
+    const listP=getJSON(API+"/joursTempo?periode="+s).catch(()=>[]);
+    const kw=await fromKelwatt();
+    let t,m;
+    if(kw&&kw.today.dateJour===iso(now)){
+      t=kw.today;m=kw.tomorrow;
+      // Kelwatt n'a pas encore la couleur de demain : on tente les autres sources
+      if(!m.codeJour){try{const r=await getDay("tomorrow",iso(tmr));if(r.j.codeJour)m=r.j}catch(e){}}
+      source="Kelwatt"+(m.provisoire?" · demain provisoire jusqu'à 10 h 30":"");
+    }else{
+      const [rt,rm]=await Promise.all([getDay("today",iso(now)),getDay("tomorrow",iso(tmr))]);
+      t=rt.j;m=rm.j;
+      source=(relayURL()?"Kelwatt indisponible · ":"")+((rt.src===2||rm.src===2)?"calendrier-tempo.fr (secours)":"api-couleur-tempo.fr");
+    }
+    const list=await listP;
+    (Array.isArray(list)?list:[]).forEach(j=>{if(j.dateJour)days[j.dateJour]=j.codeJour});
+    if(t.dateJour)days[t.dateJour]=t.codeJour;
+    if(m.dateJour&&m.codeJour)days[m.dateJour]=m.codeJour;
+    today=t;tomorrow=m;
+    store.set("days",days);store.set("last",{today:t,tomorrow:m,at:Date.now()});
+    checkNotify();
+  }catch(e){
+    const last=store.get("last",null);
+    if(last){today=last.today;tomorrow=last.tomorrow;
+      $("errmsg").textContent="Hors ligne : affichage des dernières couleurs connues ("+new Date(last.at).toLocaleString("fr-FR",{weekday:"short",hour:"2-digit",minute:"2-digit"})+").";}
+    else $("errmsg").textContent="Impossible de joindre le service Tempo. Vérifie ta connexion puis réessaie.";
+    $("err").hidden=false;
+  }
+  render();
+}
+
+function paintDay(el,j,fallbackDate){
+  const c=j&&j.codeJour?j.codeJour:0, d=(j&&j.dateJour)||fallbackDate;
+  el.dataset.c=c;
+  el.querySelector(".date").textContent=fmt(d);
+  el.querySelector(".col").textContent=c?C[c].n:"Pas encore connue";
+  const lb=el.querySelector(".lbl");lb.dataset.base=lb.dataset.base||lb.textContent;
+  lb.textContent=lb.dataset.base+(c&&j&&j.provisoire?" · provisoire":"");
+  el.querySelector(".col").style.fontSize=c?"":"18px";
+  el.querySelector(".emo").textContent=C[c].e;
+}
+
+function render(){
+  const now=new Date(),tm=new Date(now);tm.setDate(tm.getDate()+1);
+  paintDay($("d0"),today,iso(now)); paintDay($("d1"),tomorrow,iso(tm));
+  document.body.dataset.mood=(today&&today.codeJour)||0; fx.set((today&&today.codeJour)||0);
+  const ct=today&&today.codeJour||0;
+  $("tip").textContent=TIPS[ct];
+  renderCounts(); renderCal(); renderCalc(); renderHC();
+  const last=store.get("last",null);
+  $("src").textContent=source;
+  $("upd").textContent=last?"mis à jour à "+new Date(last.at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"";
+}
+
+function renderCounts(){
+  const s=seasonOf(new Date()); $("season").textContent=s.replace("-","–");
+  const y=+s.slice(0,4), leap=((y+1)%4===0);
+  const quota={1:leap?301:300,2:43,3:22}, used={1:0,2:0,3:0};
+  Object.entries(days).forEach(([d,c])=>{if(seasonOf(new Date(d+"T12:00:00"))===s&&used[c]!==undefined)used[c]++});
+  $("counts").innerHTML=[1,2,3].map(c=>{
+    const left=Math.max(0,quota[c]-used[c]),pct=used[c]/quota[c]*100;
+    const col=c===1?"var(--bleu)":c===2?"var(--blanc)":"var(--rouge)";
+    return `<div class="cnt"><div class="n">${left}</div><div class="t">${C[c].n} restants · ${used[c]} passés</div><div class="bar"><i style="width:${pct}%;background:${col}"></i></div></div>`;
+  }).join("");
+  // Fin des jours rouges : 31 mars
+  const end=new Date(y+1,2,31,23,59), start=new Date(y,10,1);
+  const now=new Date();let txt;
+  if(now<start){txt="Les jours rouges commencent le 1er novembre (lundi au vendredi uniquement).";}
+  else if(now<=end){const n=Math.ceil((end-now)/864e5);txt=`Encore ${n} jours avant la fin de la période des jours rouges (31 mars). Les rouges tombent uniquement du lundi au vendredi, jamais un dimanche ni un jour férié.`;}
+  else txt="Plus de jours rouges possibles avant le 1er novembre.";
+  $("redinfo").textContent=txt;
+}
+
+function renderCal(){
+  const y=viewMonth.getFullYear(),m=viewMonth.getMonth();
+  $("mname").textContent=viewMonth.toLocaleDateString("fr-FR",{month:"long",year:"numeric"});
+  const first=(new Date(y,m,1).getDay()+6)%7, n=new Date(y,m+1,0).getDate(), t=iso(new Date());
+  let h=["L","M","M","J","V","S","D"].map(d=>`<span class="wd">${d}</span>`).join("");
+  for(let i=0;i<first;i++)h+="<span style='background:none'></span>";
+  for(let d=1;d<=n;d++){const k=iso(new Date(y,m,d));h+=`<span data-c="${days[k]||0}" class="${k===t?"today":""}" title="${fmt(k)} : ${C[days[k]||0].n}">${d}</span>`}
+  $("cal").innerHTML=h;
+}
+
+function prices(){return store.get("prices",DEF_PRICES)}
+function renderPrices(){
+  const p=prices();
+  $("prices").innerHTML="<span></span><b>HC</b><b>HP</b>"+[1,2,3].map(c=>`<span>${C[c].n}</span><input type="number" step="0.0001" id="p${c}0" value="${p[c][0]}" aria-label="${C[c].n} heures creuses"><input type="number" step="0.0001" id="p${c}1" value="${p[c][1]}" aria-label="${C[c].n} heures pleines">`).join("");
+  $("prices").querySelectorAll("input").forEach(i=>i.addEventListener("input",()=>{
+    const np={};[1,2,3].forEach(c=>np[c]=[+$("p"+c+"0").value||0,+$("p"+c+"1").value||0]);store.set("prices",np);renderCalc();analyse();renderManRes();}));
+}
+function renderCalc(){
+  const k=+$("kwh").value||0, idx=$("when").value==="hc"?0:1, p=prices();
+  $("calc").innerHTML=[[1,"cb"],[2,"cw"],[3,"cr"]].map(([c,cl])=>`<div class="${cl}"><small>${C[c].n}</small>${(k*p[c][idx]).toFixed(2).replace(".",",")} €</div>`).join("");
+}
+
+function mins(s){const[h,m]=s.split(":").map(Number);return h*60+m}
+function inHC(d){const a=mins($("hcs").value),b=mins($("hce").value),x=d.getHours()*60+d.getMinutes();return a<b?(x>=a&&x<b):(x>=a||x<b)}
+function renderHC(){
+  const now=new Date(), hc=inHC(now);
+  $("hdot").style.background=hc?"var(--ok)":(today&&today.codeJour===3?"var(--rouge)":"var(--bleu)");
+  const target=hc?$("hce").value:$("hcs").value, tm=mins(target);
+  let diff=tm-(now.getHours()*60+now.getMinutes()); if(diff<=0)diff+=1440;
+  $("hnow").textContent=hc?"Tu es en heures creuses 🌙":"Tu es en heures pleines ☀️";
+  $("hnext").textContent=(hc?"Fin des heures creuses":"Heures creuses")+" dans "+Math.floor(diff/60)+" h "+String(diff%60).padStart(2,"0");
+}
+
+function tick(){$("clock").textContent=new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});renderHC()}
+
+function toast(t){const e=$("toast");e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,2000)}
+
+$("share").onclick=async()=>{
+  const c=tomorrow&&tomorrow.codeJour||0;
+  const txt=c?`Demain (${fmt(tomorrow.dateJour,{weekday:"long",day:"numeric",month:"long"})}) c'est jour ${C[c].n.toUpperCase()} ${C[c].e}`:"La couleur Tempo de demain n'est pas encore connue ❔";
+  try{await navigator.clipboard.writeText(txt);toast("Copié !")}catch(e){toast(txt)}
+};
+$("retry").onclick=load;
+$("prev").onclick=()=>{viewMonth.setMonth(viewMonth.getMonth()-1);renderCal()};
+$("next").onclick=()=>{viewMonth.setMonth(viewMonth.getMonth()+1);renderCal()};
+$("appl").onchange=()=>{$("kwh").value=$("appl").value;renderCalc()};
+$("kwh").oninput=renderCalc; $("when").onchange=renderCalc;
+["hcs","hce"].forEach(id=>{$(id).value=store.get(id,$(id).value);$(id).onchange=()=>{store.set(id,$(id).value);renderHC()}});
+$("kwh").value=$("appl").value;
+/* ---------- Alertes ---------- */
+let swReg=null;
+async function initSW(){
+  if(!("serviceWorker" in navigator)||!/^https?:$/.test(location.protocol))return;
+  try{swReg=await navigator.serviceWorker.register("sw.js");await navigator.serviceWorker.ready;}catch(e){swReg=null}
+}
+function notifOn(){return store.get("notif",false)}
+function updNotifUI(){
+  const on=notifOn();
+  $("notif").textContent=on?"🔕 Couper les alertes":"🔔 Activer les alertes";
+  const i=$("notifinfo");
+  if(!on){i.hidden=true;return}
+  i.hidden=false;
+  i.textContent=swReg
+    ?"Alertes actives : tu seras prévenu dès que la couleur de demain est publiée, y compris appli fermée quand ton téléphone le permet."
+    :"Alertes actives tant que l'appli reste ouverte (même en arrière-plan). Pour les recevoir appli fermée, il faut la mettre en ligne.";
+}
+async function showNotif(title,body){
+  try{if(navigator.vibrate)navigator.vibrate([200,100,200])}catch(e){}
+  const perm=("Notification" in window)?Notification.permission:"denied";
+  if(perm==="granted"){
+    try{if(swReg){await swReg.showNotification(title,{body,tag:"tempo",renotify:true});return true}}catch(e){}
+    try{new Notification(title,{body,tag:"tempo"});return true}catch(e){}
+  }
+  return false;
+}
+function checkNotify(){
+  const c=tomorrow&&tomorrow.codeJour;
+  const band=$("alertband");
+  if(c){
+    band.hidden=false;band.dataset.c=c;
+    band.textContent=`${C[c].e} Demain, ${fmt(tomorrow.dateJour,{weekday:"long",day:"numeric",month:"long"})} : jour ${C[c].n.toUpperCase()}`;
+  }else band.hidden=true;
+  if(!notifOn()||!c)return;
+  // On prévient à la pré-annonce, puis à nouveau seulement si la couleur change ensuite
+  const sig=tomorrow.dateJour+":"+c, prev=store.get("notified","");
+  if(prev===sig)return;
+  const changed=prev.startsWith(tomorrow.dateJour+":");
+  store.set("notified",sig);
+  if(changed){showNotif(`⚠️ Tempo : changement, demain jour ${C[c].n.toUpperCase()} ${C[c].e}`,"La couleur annoncée ce matin a été modifiée par RTE.");return}
+  const extra=c===3?" Pense à décaler tes gros appareils en heures creuses.":c===1?" Bon moment pour les machines !":"";
+  showNotif(`Tempo : demain jour ${C[c].n.toUpperCase()} ${C[c].e}`,fmt(tomorrow.dateJour)+"."+extra).then(ok=>{if(!ok)toast("Couleur de demain publiée : "+C[c].n)});
+}
+$("notif").onclick=async()=>{
+  if(notifOn()){store.set("notif",false);updNotifUI();toast("Alertes coupées");return}
+  let perm="denied";
+  if("Notification" in window){try{perm=await Notification.requestPermission()}catch(e){}}
+  store.set("notif",true);
+  if(swReg&&"periodicSync" in swReg){
+    try{await swReg.periodicSync.register("tempo-check",{minInterval:60*60*1000})}catch(e){}
+  }
+  updNotifUI();
+  if(perm==="granted"){
+    const ok=await showNotif("Alertes Tempo activées ✅","Tu seras prévenu dès que la couleur du lendemain est connue.");
+    if(!ok)toast("Alertes activées (bandeau + vibration dans l'appli)");
+  }else toast("Notifications refusées par le téléphone : alerte affichée dans l'appli seulement");
+  store.set("notified","");checkNotify();
+};
+// Tant que la couleur de demain n'est pas connue, on revérifie toutes les 10 min
+setInterval(()=>{if(!(tomorrow&&tomorrow.codeJour)||tomorrow.provisoire||new Date(tomorrow.dateJour+"T00:00:00")<=new Date())load()},10*60000);
+
+/* ---------- Import de consommation ---------- */
+let lastRows=null;
+function parseDate(s){
+  s=s.trim().replace(/^"|"$/g,"");
+  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if(m){const d=/[+-]\d{2}:?\d{2}$|Z$/.test(s)?new Date(s):new Date(+m[1],m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0));return isNaN(d)?null:d}
+  m=s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if(m)return new Date(+m[3],m[2]-1,+m[1],+(m[4]||0),+(m[5]||0),+(m[6]||0));
+  return null;
+}
+function parseCSV(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  const sep=(text.match(/;/g)||[]).length>(text.match(/,/g)||[]).length/3?";":",";
+  let header="",rows=[];
+  for(const l of lines){
+    const cells=l.split(sep);
+    let di=-1,d=null;
+    for(let i=0;i<cells.length;i++){d=parseDate(cells[i]);if(d){di=i;break}}
+    if(!d){if(/[a-z]/i.test(l))header=l.toLowerCase();continue}
+    let v=null;
+    for(let i=cells.length-1;i>=0;i--){if(i===di)continue;const x=cells[i].trim().replace(/^"|"$/g,"").replace(/\s/g,"").replace(",",".");if(x!==""&&!isNaN(+x)){v=+x;break}}
+    if(v!==null)rows.push({t:d,v,k:di+"/"+cells.length});
+  }
+  // On garde uniquement les lignes au format majoritaire (évite les lignes d'en-tête Enedis)
+  const cnt={};rows.forEach(r=>cnt[r.k]=(cnt[r.k]||0)+1);
+  const best=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0];
+  rows=rows.filter(r=>r.k===best);
+  rows.sort((a,b)=>a.t-b.t);
+  header=lines.slice(0,12).join(" ").toLowerCase();
+  return {rows,header};
+}
+function median(a){const s=[...a].sort((x,y)=>x-y);return s[Math.floor(s.length/2)]||0}
+async function ensureSeasons(dates){
+  const need=[...new Set(dates.map(d=>seasonOf(new Date(d+"T12:00:00"))))];
+  const cached=store.get("seasons",{});
+  for(const s of need){
+    if(cached[s]&&s!==seasonOf(new Date()))continue;
+    try{const list=await getJSON(API+"/joursTempo?periode="+s);list.forEach(j=>{if(j.dateJour)days[j.dateJour]=j.codeJour});cached[s]=1}catch(e){}
+  }
+  store.set("seasons",cached);store.set("days",days);
+}
+async function analyse(){
+  if(!lastRows)return;
+  const {rows,header}=lastRows, out=$("conso");
+  if(rows.length<2){out.innerHTML="<p class='tip'>Aucune ligne date + valeur trouvée dans ce fichier. Vérifie que c'est bien un export de consommation.</p>";return}
+  const diffs=[];for(let i=1;i<Math.min(rows.length,500);i++)diffs.push(rows[i].t-rows[i-1].t);
+  const step=median(diffs), stepH=step/36e5, intraday=stepH<20;
+  let unit=$("unit").value;
+  if(unit==="auto"){
+    if(/kwh/.test(header))unit="kWh";else if(/\(wh\)|\bwh\b/.test(header))unit="Wh";else if(/\(w\)|puissance|\bw\b/.test(header))unit="W";
+    else{const md=median(rows.map(r=>r.v));unit=intraday?(md>20?"W":"kWh"):(md>200?"Wh":"kWh")}
+  }
+  const toKWh=v=>unit==="kWh"?v:unit==="Wh"?v/1000:v*stepH/1000;
+  const hpShare=Math.min(100,Math.max(0,+$("hpshare").value||0))/100, p=prices(), base=+$("base").value||0;
+  const agg={0:[0,0,0],1:[0,0,0],2:[0,0,0],3:[0,0,0]}; // [kWh HC, kWh HP, €]
+  const tdates=[];
+  const items=rows.map(r=>{
+    const mid=intraday?new Date(r.t.getTime()-step/2):new Date(r.t.getFullYear(),r.t.getMonth(),r.t.getDate(),12);
+    const td=iso(new Date(mid.getTime()-6*36e5)); // une journée Tempo va de 6 h à 6 h
+    tdates.push(intraday?td:iso(mid));
+    return {mid,td:intraday?td:iso(mid),e:toKWh(r.v)};
+  });
+  out.innerHTML="<p class='tip'>Récupération des couleurs de la période…</p>";
+  await ensureSeasons([...new Set(tdates)]);
+  let total=0,tot=0;
+  items.forEach(it=>{
+    const c=days[it.td]||0, pc=c||1;
+    let hc,hp;
+    if(intraday){if(inHC(it.mid)){hc=it.e;hp=0}else{hc=0;hp=it.e}}else{hp=it.e*hpShare;hc=it.e-hp}
+    const cost=hc*p[pc][0]+hp*p[pc][1];
+    agg[c][0]+=hc;agg[c][1]+=hp;agg[c][2]+=cost;total+=cost;tot+=it.e;
+  });
+  const baseCost=tot*base, diff=baseCost-total;
+  const redHP=agg[3][1], save=redHP*0.3*(p[3][1]-p[3][0]);
+  const f=(n,d=2)=>n.toFixed(d).replace(".",",");
+  const first=rows[0].t.toLocaleDateString("fr-FR"), last=rows[rows.length-1].t.toLocaleDateString("fr-FR");
+  const nDays=new Set(tdates).size;
+  const col={0:"var(--gris)",1:"var(--bleu)",2:"var(--blanc)",3:"var(--rouge)"};
+  out.innerHTML=`
+    <p class="tip" style="margin:0 0 10px">${rows.length} relevés du ${first} au ${last} · ${intraday?"pas de "+Math.round(step/6e4)+" min, HC/HP réels":"relevés journaliers, HP estimées à "+Math.round(hpShare*100)+" %"} · unité ${unit}</p>
+    <div class="big">
+      <div><small>Total consommé</small><b>${f(tot,0)} kWh</b><small>${f(tot/nDays,1)} kWh/jour</small></div>
+      <div><small>Coût en Tempo</small><b>${f(total)} €</b><small>${f(total/nDays)} €/jour</small></div>
+      <div><small>En option Base</small><b>${f(baseCost)} €</b><small>${f(base,4)} €/kWh</small></div>
+      <div><small>${diff>=0?"Tempo te fait gagner":"Tempo te coûte en plus"}</small><b class="${diff>=0?"good":"bad"}">${f(Math.abs(diff))} €</b><small>${f(Math.abs(diff)/total*100,0)} % vs Base</small></div>
+    </div>
+    <div style="overflow-x:auto"><table class="tbl">
+      <tr><th>Couleur</th><th>kWh HC</th><th>kWh HP</th><th>Coût</th></tr>
+      ${[1,2,3,0].filter(c=>agg[c][0]+agg[c][1]>0).map(c=>`<tr><td><span class="sw" style="background:${col[c]};outline:1px solid var(--line)"></span>${c?C[c].n:"Inconnue*"}</td><td class="num">${f(agg[c][0],1)}</td><td class="num">${f(agg[c][1],1)}</td><td class="num">${f(agg[c][2])} €</td></tr>`).join("")}
+    </table></div>
+    ${agg[0][0]+agg[0][1]>0?"<p class='tip'>* Jours dont la couleur n'a pas pu être récupérée, comptés au tarif bleu.</p>":""}
+    ${redHP>0?`<p class="tip">💡 En décalant 30 % de ta conso des jours rouges en heures creuses, tu aurais économisé environ <b>${f(save)} €</b>.</p>`:""}`;
+  store.set("conso",{text:lastRows.raw});
+}
+$("csv").onchange=e=>{
+  const file=e.target.files[0];if(!file)return;
+  const r=new FileReader();
+  r.onload=()=>{const raw=String(r.result);lastRows={...parseCSV(raw),raw};analyse()};
+  r.readAsText(file,"utf-8");
+};
+["unit","hpshare","base"].forEach(id=>$(id).addEventListener("change",()=>{if(id!=="unit")store.set(id,$(id).value);analyse()}));
+["hpshare","base"].forEach(id=>{$(id).value=store.get(id,$(id).value)});
+(()=>{const s=store.get("conso",null);if(s&&s.text){lastRows={...parseCSV(s.text),raw:s.text};setTimeout(analyse,500)}})();
+
+$("relay").value=relayURL();
+$("relay").addEventListener("change",()=>{store.set("relay",$("relay").value.trim());try{swReg&&swReg.active&&swReg.active.postMessage({type:"relay",url:relayURL()})}catch(e){}store.set("notified","");load();toast($("relay").value.trim()?"Relais Kelwatt enregistré":"Relais Kelwatt retiré")});
+
+/* ---------- Saisie manuelle ---------- */
+const SLOTS=[[1,0],[1,1],[2,0],[2,1],[3,0],[3,1]]; // [couleur, 0=HC 1=HP]
+let man=store.get("manual",{mode:"idx",v:{},ref:""});
+function renderManTable(){
+  $("mmode").value=man.mode;
+  const idx=man.mode==="idx";
+  $("refrow").hidden=!idx;
+  $("refdate").value=man.ref||"";
+  const col={1:"var(--bleu)",2:"var(--blanc)",3:"var(--rouge)"};
+  $("mtable").innerHTML=`<tr><th>Compteur</th>${idx?"<th>Index de référence</th><th>Index actuel</th>":"<th>kWh</th>"}</tr>`+
+    SLOTS.map(([c,h])=>{const k=c+"_"+h,v=man.v[k]||{};
+      return `<tr><td><span class="sw" style="background:${col[c]};outline:1px solid var(--line)"></span>${C[c].n} ${h?"HP":"HC"}</td>${
+        idx?`<td><input type="number" inputmode="decimal" step="any" min="0" id="m_${k}_a" value="${v.a??""}" aria-label="${C[c].n} ${h?"HP":"HC"} index de référence"></td><td><input type="number" inputmode="decimal" step="any" min="0" id="m_${k}_b" value="${v.b??""}" aria-label="${C[c].n} ${h?"HP":"HC"} index actuel"></td>`
+           :`<td><input type="number" inputmode="decimal" step="any" min="0" id="m_${k}_k" value="${v.k??""}" placeholder="0" aria-label="${C[c].n} ${h?"HP":"HC"} kWh"></td>`}</tr>`}).join("");
+  $("mtable").querySelectorAll("input").forEach(i=>i.addEventListener("input",()=>{
+    const [,c,h,f]=i.id.split("_"),k=c+"_"+h;man.v[k]=man.v[k]||{};man.v[k][f]=i.value===""?undefined:+i.value;
+    store.set("manual",man);renderManRes();}));
+  renderManRes();
+}
+function renderManRes(){
+  const p=prices(), base=+$("base").value||0, f=(n,d=2)=>n.toFixed(d).replace(".",",");
+  const kwh={};let tot=0,cost=0,bad=false;
+  SLOTS.forEach(([c,h])=>{const v=man.v[c+"_"+h]||{};let e=0;
+    if(man.mode==="idx"){if(v.a!=null&&v.b!=null){e=v.b-v.a;if(e<0){bad=true;e=0}}}else e=v.k||0;
+    kwh[c+"_"+h]=e;tot+=e;cost+=e*p[c][h];});
+  const out=$("mres");
+  if(!tot){out.innerHTML="<p class='tip' style='margin:0'>Remplis au moins une case pour voir le calcul.</p>";return}
+  const baseCost=tot*base,diff=baseCost-cost;
+  const per=c=>({e:kwh[c+"_0"]+kwh[c+"_1"],eur:kwh[c+"_0"]*p[c][0]+kwh[c+"_1"]*p[c][1]});
+  const hpTot=kwh["1_1"]+kwh["2_1"]+kwh["3_1"];
+  const save=kwh["3_1"]*0.3*(p[3][1]-p[3][0]);
+  const colr={1:"var(--bleu)",2:"var(--blanc)",3:"var(--rouge)"};
+  let since="";
+  if(man.mode==="idx"&&man.ref){const nd=Math.max(1,Math.round((new Date()-new Date(man.ref+"T00:00:00"))/864e5));
+    since=`<p class="tip" style="margin:0 0 8px">Depuis le ${fmt(man.ref,{day:"numeric",month:"long",year:"numeric"})} (${nd} jours) · ${f(tot/nd,1)} kWh et ${f(cost/nd)} € par jour en moyenne, soit environ ${f(cost/nd*30,0)} € par mois.</p>`;}
+  out.innerHTML=`${since}
+    ${bad?"<p class='tip bad' style='margin:0 0 8px'>Un index actuel est plus petit que l'index de référence : vérifie la saisie.</p>":""}
+    <div class="big">
+      <div><small>Total consommé</small><b>${f(tot,0)} kWh</b><small>${f(hpTot/tot*100,0)} % en heures pleines</small></div>
+      <div><small>Coût en Tempo</small><b>${f(cost)} €</b><small>${f(cost/tot,4)} €/kWh en moyenne</small></div>
+      <div><small>En option Base</small><b>${f(baseCost)} €</b><small>${f(base,4)} €/kWh</small></div>
+      <div><small>${diff>=0?"Tempo te fait gagner":"Tempo te coûte en plus"}</small><b class="${diff>=0?"good":"bad"}">${f(Math.abs(diff))} €</b><small>${f(Math.abs(diff)/baseCost*100,0)} % vs Base</small></div>
+    </div>
+    ${[1,2,3].map(c=>{const r=per(c),pc=tot?r.e/tot*100:0;return `<div style="margin-bottom:8px"><div class="row" style="justify-content:space-between"><span><span class="sw" style="background:${colr[c]}"></span>${C[c].n} · ${f(r.e,0)} kWh</span><b style="font-family:var(--mono)">${f(r.eur)} €</b></div><div class="bar"><i style="width:${pc}%;background:${colr[c]}"></i></div></div>`}).join("")}
+    ${kwh["3_1"]>0?`<p class="tip">💡 Décaler 30 % de ta conso rouge HP en heures creuses t'aurait fait économiser environ <b>${f(save)} €</b>.</p>`:""}
+    <p class="tip">Hors abonnement et taxes fixes. Les prix utilisés sont ceux de « Mes tarifs ».</p>`;
+}
+$("refdate").onchange=()=>{man.ref=$("refdate").value;store.set("manual",man);renderManRes()};
+let refArmed=false;
+$("newref").onclick=()=>{
+  if(!refArmed){refArmed=true;$("newref").textContent="Appuie encore pour confirmer";setTimeout(()=>{refArmed=false;$("newref").textContent="↻ Prendre l'index actuel comme nouvelle référence"},4000);return}
+  refArmed=false;
+  SLOTS.forEach(([c,h])=>{const k=c+"_"+h,v=man.v[k]||{};if(v.b!=null)man.v[k]={a:v.b}});
+  man.ref=iso(new Date());store.set("manual",man);renderManTable();toast("Nouvelle référence enregistrée");
+};
+$("mmode").onchange=()=>{man.mode=$("mmode").value;store.set("manual",man);renderManTable()};
+$("base").addEventListener("input",renderManRes);
+renderManTable();
+
+initSW().then(()=>{updNotifUI();if(swReg&&swReg.active){swReg.active.postMessage({type:"relay",url:relayURL()});if(notifOn())swReg.active.postMessage("check")}});
+updNotifUI();
+renderPrices(); render(); load();
+setInterval(tick,30000); tick();
+setInterval(load,30*60000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)load()});
+</script>
+</body>
+</html>
