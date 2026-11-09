@@ -149,7 +149,7 @@ details summary{cursor:pointer;font-weight:600;color:var(--fg)}
   <section class="card">
     <div class="status"><span class="dot" id="hdot"></span><div><span id="hnow">—</span><small id="hnext"></small></div></div>
     <p class="tip" id="tip"></p>
-    <div class="row" style="margin-top:10px"><button class="btn" id="share">📋 Copier la couleur de demain</button><button class="btn" id="notif">🔔 Activer les alertes</button></div>
+    <div class="row" style="margin-top:10px"><button class="btn" id="share">📋 Copier la couleur de demain</button><button class="btn" id="notif">🔔 Activer les alertes</button><button class="btn" id="notiftest" hidden>📨 Tester une notification</button></div>
     <p class="tip" id="notifinfo" hidden></p>
   </section>
 
@@ -455,56 +455,95 @@ async function initSW(){
   try{swReg=await navigator.serviceWorker.register("sw.js");await navigator.serviceWorker.ready;}catch(e){swReg=null}
 }
 function notifOn(){return store.get("notif",false)}
+function pushOn(){return store.get("push",false)}
+const NOTIF_OPTS={icon:"icon-192.png",badge:"badge-96.png"};
 function updNotifUI(){
   const on=notifOn();
   $("notif").textContent=on?"🔕 Couper les alertes":"🔔 Activer les alertes";
+  $("notiftest").hidden=!(on&&pushOn());
   const i=$("notifinfo");
   if(!on){i.hidden=true;return}
   i.hidden=false;
-  i.textContent=swReg
-    ?"Alertes actives : tu seras prévenu dès que la couleur de demain est publiée, y compris appli fermée quand ton téléphone le permet."
-    :"Alertes actives tant que l'appli reste ouverte (même en arrière-plan). Pour les recevoir appli fermée, il faut la mettre en ligne.";
+  i.textContent=pushOn()
+    ?"Alertes actives, même appli fermée : tu es prévenu dès la pré-annonce du matin (vers 6 h 30), puis en cas de changement avant 10 h 30."
+    :swReg?"Alertes actives quand l'appli est ouverte ou en arrière-plan. Les alertes appli fermée n'ont pas pu être activées sur ce téléphone."
+          :"Alertes actives tant que l'appli reste ouverte. Pour les recevoir appli fermée, ouvre l'appli depuis son adresse en ligne.";
 }
 async function showNotif(title,body){
   try{if(navigator.vibrate)navigator.vibrate([200,100,200])}catch(e){}
   const perm=("Notification" in window)?Notification.permission:"denied";
   if(perm==="granted"){
-    try{if(swReg){await swReg.showNotification(title,{body,tag:"tempo",renotify:true});return true}}catch(e){}
-    try{new Notification(title,{body,tag:"tempo"});return true}catch(e){}
+    try{if(swReg){await swReg.showNotification(title,{body,tag:"tempo",renotify:true,...NOTIF_OPTS});return true}}catch(e){}
+    try{new Notification(title,{body,tag:"tempo",icon:NOTIF_OPTS.icon});return true}catch(e){}
   }
   return false;
+}
+/* Abonnement aux notifications push du relais */
+function keyBytes(b64){const s=atob(b64.replace(/-/g,"+").replace(/_/g,"/")+"===".slice((b64.length+3)%4));return Uint8Array.from(s,c=>c.charCodeAt(0))}
+function relayBase(){return relayURL().replace(/\/+$/,"")}
+async function subscribePush(){
+  if(!swReg||!("PushManager" in window)||!relayURL()||Notification.permission!=="granted")return false;
+  try{
+    let sub=await swReg.pushManager.getSubscription();
+    if(!sub){
+      const {key}=await getJSON(relayBase()+"/vapid");
+      sub=await swReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(key)});
+    }
+    const r=await fetch(relayBase()+"/subscribe",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(sub.toJSON())});
+    if(!r.ok)throw new Error(r.status);
+    store.set("push",true);return true;
+  }catch(e){store.set("push",false);return false}
+}
+async function unsubscribePush(){
+  try{
+    const sub=swReg&&await swReg.pushManager.getSubscription();
+    if(sub){
+      fetch(relayBase()+"/unsubscribe",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({endpoint:sub.endpoint})}).catch(()=>{});
+      await sub.unsubscribe();
+    }
+  }catch(e){}
+  store.set("push",false);
 }
 function checkNotify(){
   const c=tomorrow&&tomorrow.codeJour;
   const band=$("alertband");
   if(c){
     band.hidden=false;band.dataset.c=c;
-    band.textContent=`${C[c].e} Demain, ${fmt(tomorrow.dateJour,{weekday:"long",day:"numeric",month:"long"})} : jour ${C[c].n.toUpperCase()}`;
+    band.textContent=`${C[c].e} Demain, ${fmt(tomorrow.dateJour,{weekday:"long",day:"numeric",month:"long"})} : jour ${C[c].n.toUpperCase()}`+(tomorrow.provisoire?" (provisoire)":"");
   }else band.hidden=true;
-  if(!notifOn()||!c)return;
-  // On prévient à la pré-annonce, puis à nouveau seulement si la couleur change ensuite
+  // Avec le push, c'est le relais qui prévient : pas de doublon depuis l'appli
+  if(!notifOn()||!c||pushOn())return;
   const sig=tomorrow.dateJour+":"+c, prev=store.get("notified","");
   if(prev===sig)return;
   const changed=prev.startsWith(tomorrow.dateJour+":");
   store.set("notified",sig);
-  if(changed){showNotif(`⚠️ Tempo : changement, demain jour ${C[c].n.toUpperCase()} ${C[c].e}`,"La couleur annoncée ce matin a été modifiée par RTE.");return}
+  if(changed){showNotif(`⚠️ Tempo : changement, demain jour ${C[c].n.toUpperCase()} ${C[c].e}`,fmt(tomorrow.dateJour)+". La couleur annoncée ce matin a été modifiée par RTE.");return}
   const extra=c===3?" Pense à décaler tes gros appareils en heures creuses.":c===1?" Bon moment pour les machines !":"";
   showNotif(`Tempo : demain jour ${C[c].n.toUpperCase()} ${C[c].e}`,fmt(tomorrow.dateJour)+"."+extra).then(ok=>{if(!ok)toast("Couleur de demain publiée : "+C[c].n)});
 }
 $("notif").onclick=async()=>{
-  if(notifOn()){store.set("notif",false);updNotifUI();toast("Alertes coupées");return}
+  if(notifOn()){store.set("notif",false);await unsubscribePush();updNotifUI();toast("Alertes coupées");return}
   let perm="denied";
   if("Notification" in window){try{perm=await Notification.requestPermission()}catch(e){}}
   store.set("notif",true);
-  if(swReg&&"periodicSync" in swReg){
-    try{await swReg.periodicSync.register("tempo-check",{minInterval:60*60*1000})}catch(e){}
-  }
+  if(perm!=="granted"){updNotifUI();toast("Notifications refusées par le téléphone : alerte affichée dans l'appli seulement");return}
+  const push=await subscribePush();
   updNotifUI();
-  if(perm==="granted"){
-    const ok=await showNotif("Alertes Tempo activées ✅","Tu seras prévenu dès que la couleur du lendemain est connue.");
-    if(!ok)toast("Alertes activées (bandeau + vibration dans l'appli)");
-  }else toast("Notifications refusées par le téléphone : alerte affichée dans l'appli seulement");
+  if(push)toast("Alertes activées, même appli fermée ✅");
+  else{await showNotif("Alertes Tempo activées ✅","Tu seras prévenu quand l'appli est ouverte.");}
   store.set("notified","");checkNotify();
+};
+$("notiftest").onclick=async()=>{
+  $("notiftest").disabled=true;
+  try{
+    const sub=await swReg.pushManager.getSubscription();
+    if(!sub)throw new Error("no sub");
+    const r=await fetch(relayBase()+"/test",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({endpoint:sub.endpoint})});
+    const j=await r.json();
+    if(j.status==="ok")toast("Test envoyé : la notification arrive dans quelques secondes");
+    else{await subscribePush();toast("Échec du test. Réabonnement fait, réessaie dans un instant.")}
+  }catch(e){toast("Impossible d'envoyer le test : vérifie ta connexion")}
+  $("notiftest").disabled=false;
 };
 // Tant que la couleur de demain n'est pas connue, on revérifie toutes les 10 min
 setInterval(()=>{if(!(tomorrow&&tomorrow.codeJour)||tomorrow.provisoire||new Date(tomorrow.dateJour+"T00:00:00")<=new Date())load()},10*60000);
@@ -675,7 +714,12 @@ $("mmode").onchange=()=>{man.mode=$("mmode").value;store.set("manual",man);rende
 $("base").addEventListener("input",renderManRes);
 renderManTable();
 
-initSW().then(()=>{updNotifUI();if(swReg&&swReg.active){swReg.active.postMessage({type:"relay",url:relayURL()});if(notifOn())swReg.active.postMessage("check")}});
+initSW().then(async()=>{
+  if(swReg&&swReg.active)swReg.active.postMessage({type:"relay",url:relayURL()});
+  // Alertes déjà activées avant la mise à jour : abonnement push automatique, sans redemander
+  if(notifOn()&&swReg&&"Notification" in window&&Notification.permission==="granted")await subscribePush();
+  updNotifUI();
+});
 updNotifUI();
 renderPrices(); render(); load();
 setInterval(tick,30000); tick();
