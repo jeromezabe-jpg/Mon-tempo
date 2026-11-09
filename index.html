@@ -106,7 +106,7 @@ details summary{cursor:pointer;font-weight:600;color:var(--fg)}
 .prices{display:grid;grid-template-columns:auto 1fr 1fr;gap:6px 8px;align-items:center;margin-top:10px;font-size:13px}
 .prices input{width:100%;font-family:var(--mono)}
 .foot{font-size:11px;color:var(--muted);text-align:center;font-family:var(--mono)}
-.alertband{border-radius:20px;padding:16px 18px;font-family:var(--display);font-weight:700;font-size:15px;color:#fff;background:linear-gradient(90deg,var(--bleu),#1d4fb8);box-shadow:0 10px 40px -10px var(--bleu)}
+.alertband{display:none!important;border-radius:20px;padding:16px 18px;font-family:var(--display);font-weight:700;font-size:15px;color:#fff;background:linear-gradient(90deg,var(--bleu),#1d4fb8);box-shadow:0 10px 40px -10px var(--bleu)}
 .alertband[data-c="2"]{background:linear-gradient(90deg,#fff,#cfd8ff);color:var(--blanc-fg);box-shadow:0 10px 40px -10px #fff}
 .alertband[data-c="3"]{background:linear-gradient(90deg,var(--rouge),var(--rouge2));box-shadow:0 10px 40px -10px var(--rouge)}
 .tbl{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
@@ -146,10 +146,47 @@ details summary{cursor:pointer;font-weight:600;color:var(--fg)}
   @keyframes breathe{50%{transform:scale(1.08);opacity:1}}
   @keyframes spin{to{transform:rotate(360deg)}}
 }
+
+/* ---------- Intro « coup de foudre » ---------- */
+#intro{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:radial-gradient(70% 50% at 50% 45%,#121a33,#05070d 70%);--k:#7a6cff;cursor:pointer;
+  animation:introOut .55s 1.45s cubic-bezier(.6,0,.2,1) forwards}
+#intro[data-c="1"]{--k:#3d8bff}#intro[data-c="2"]{--k:#e9eeff}#intro[data-c="3"]{--k:#ff3b4e}
+#intro .ib{position:relative;width:min(42vw,170px);aspect-ratio:1;display:grid;place-items:center}
+#intro svg{width:100%;height:100%;overflow:visible}
+#intro .stroke{fill:none;stroke:#ffd84a;stroke-width:2.2;stroke-linejoin:round;stroke-dasharray:260;stroke-dashoffset:260;filter:drop-shadow(0 0 6px #ffd84a);animation:draw .5s .1s ease-out forwards,fadeStroke .3s .75s forwards}
+#intro .fill{opacity:0;transform-origin:50% 50%;animation:boltIn .35s .55s cubic-bezier(.2,1.6,.4,1) forwards}
+#intro .ring{position:absolute;inset:0;margin:auto;width:40%;height:40%;border-radius:50%;border:3px solid var(--k);opacity:0;box-shadow:0 0 30px var(--k),inset 0 0 20px var(--k);animation:ring .9s .62s ease-out forwards}
+#intro .ring.r2{animation-delay:.78s;border-width:2px}
+#intro .flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;animation:flash .45s .58s ease-out}
+#intro .it{position:absolute;top:calc(50% + min(26vw,110px));left:0;right:0;text-align:center;font-family:var(--display);font-weight:800;font-size:clamp(22px,7vw,30px);letter-spacing:-.03em;
+  background:linear-gradient(90deg,var(--bleu) 0 30%,var(--blanc) 38% 62%,var(--rouge) 70%);-webkit-background-clip:text;background-clip:text;color:transparent;opacity:0;transform:translateY(14px);animation:titleIn .5s .8s cubic-bezier(.2,.8,.2,1) forwards}
+#intro .it small{display:block;font-family:var(--body);font-weight:400;font-size:12px;letter-spacing:.2em;text-transform:uppercase;-webkit-text-fill-color:var(--muted);margin-top:6px}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes fadeStroke{to{opacity:0}}
+@keyframes boltIn{0%{opacity:0;transform:scale(.6) rotate(-8deg)}100%{opacity:1;transform:scale(1) rotate(0);filter:drop-shadow(0 0 22px var(--k))}}
+@keyframes ring{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(4.2)}}
+@keyframes flash{0%{opacity:0}15%{opacity:.55}100%{opacity:0}}
+@keyframes titleIn{to{opacity:1;transform:none}}
+@keyframes introOut{to{opacity:0;transform:scale(1.15);visibility:hidden}}
+#intro.skip{animation:introOut .25s forwards}
+@media (prefers-reduced-motion:reduce){#intro{display:none}}
 </style>
 </head>
 <body>
 <canvas id="fx" aria-hidden="true"></canvas>
+<div id="intro" aria-hidden="true">
+  <div class="ib">
+    <span class="ring"></span><span class="ring r2"></span>
+    <svg viewBox="0 0 100 100">
+      <defs><linearGradient id="tri" x1="0" x2="1"><stop offset=".42" stop-color="#3d8bff"/><stop offset=".42" stop-color="#f4f6ff"/><stop offset=".58" stop-color="#f4f6ff"/><stop offset=".58" stop-color="#ff3b4e"/></linearGradient></defs>
+      <polygon class="fill" fill="url(#tri)" points="58,8 24,56 46,56 38,92 78,42 55,42 66,8"/>
+      <polygon class="stroke" points="58,8 24,56 46,56 38,92 78,42 55,42 66,8"/>
+    </svg>
+  </div>
+  <div class="it">Mon Tempo<small id="introsub">Couleur Tempo du jour</small></div>
+  <span class="flash"></span>
+</div>
+
 <main>
   <header><h1>Mon Tempo <span>⚡</span></h1><span class="clock" id="clock"></span></header>
 
@@ -160,10 +197,15 @@ details summary{cursor:pointer;font-weight:600;color:var(--fg)}
     <div class="day" id="d1" data-c="0"><div><div class="lbl">Demain</div><div class="date"></div></div><div class="orb"></div><div class="col">…</div><div class="emo"></div></div>
   </section>
 
-  <section class="card">
-    <div class="status"><span class="dot" id="hdot"></span><div><span id="hnow">—</span><small id="hnext"></small></div></div>
-    <p class="tip" id="tip"></p>
-    <div class="row" style="margin-top:10px"><button class="btn" id="share">📋 Copier la couleur de demain</button><button class="btn" id="notif">🔔 Activer les alertes</button><button class="btn" id="notiftest" hidden>📨 Tester une notification</button></div>
+  <section class="card" id="prevcard">
+    <h2>Prévisions sur 7 jours</h2>
+    <div id="prevlist" class="prevlist"><p class="tip" style="margin:0">Chargement des prévisions…</p></div>
+    <p class="tip prevsrc">Estimations, pas des couleurs officielles. Prévisions <a href="https://www.calendrier-tempo.fr" target="_blank" rel="noopener">calendrier-tempo.fr</a> (licence CC BY 4.0), mises à jour chaque jour.</p>
+  </section>
+
+  <section class="card" id="alertcard">
+    <h2>Alertes et partage</h2>
+    <div class="row"><button class="btn" id="notif">🔔 Activer les alertes</button><button class="btn" id="notiftest" hidden>📨 Tester une notification</button><button class="btn" id="share">📋 Copier la couleur de demain</button></div>
     <div class="row" id="filterrow" style="margin-top:10px" hidden>
       <label for="notifmin">Me prévenir pour</label>
       <select id="notifmin"><option value="1">Toutes les couleurs</option><option value="2">Blanc et rouge</option><option value="3">Rouge uniquement</option></select>
@@ -171,13 +213,13 @@ details summary{cursor:pointer;font-weight:600;color:var(--fg)}
     <p class="tip" id="notifinfo" hidden></p>
   </section>
 
+  <section class="card" id="nowcard">
+    <h2>En ce moment</h2>
+    <div class="status"><span class="dot" id="hdot"></span><div><span id="hnow">—</span><small id="hnext"></small></div></div>
+    <p class="tip" id="tip"></p>
+  </section>
   <div class="alertband" id="alertband" hidden></div>
 
-  <section class="card" id="prevcard">
-    <h2>Prévisions sur 7 jours</h2>
-    <div id="prevlist" class="prevlist"><p class="tip" style="margin:0">Chargement des prévisions…</p></div>
-    <p class="tip prevsrc">Estimations, pas des couleurs officielles. Prévisions <a href="https://www.calendrier-tempo.fr" target="_blank" rel="noopener">calendrier-tempo.fr</a> (licence CC BY 4.0), mises à jour chaque jour.</p>
-  </section>
 
   <section class="card">
     <h2>Jours restants · saison <span id="season"></span></h2>
@@ -258,6 +300,15 @@ details summary{cursor:pointer;font-weight:600;color:var(--fg)}
 <div class="toast" id="toast" hidden></div>
 
 <script>
+/* ---------- Intro : couleur du jour connue, passage au toucher, retrait après l'animation ---------- */
+(()=>{const el=document.getElementById("intro");if(!el)return;
+  try{const l=JSON.parse(localStorage.getItem("tempo_last")||"null");const c=l&&l.today&&l.today.codeJour;
+    if(c){el.dataset.c=c;document.getElementById("introsub").textContent="Aujourd'hui · jour "+["","bleu","blanc","rouge"][c]}}catch(e){}
+  const done=()=>el.remove();
+  el.addEventListener("click",()=>{el.classList.add("skip");setTimeout(done,260)});
+  el.addEventListener("animationend",e=>{if(e.target===el)done()});
+  setTimeout(done,2600);
+})();
 const API="https://www.api-couleur-tempo.fr/api";
 const C={0:{n:"Inconnue",e:"❔"},1:{n:"Bleu",e:"💧"},2:{n:"Blanc",e:"❄️"},3:{n:"Rouge",e:"🔥"}};
 const TIPS={
