@@ -150,6 +150,10 @@ details summary{cursor:pointer;font-weight:600;color:var(--fg)}
     <div class="status"><span class="dot" id="hdot"></span><div><span id="hnow">—</span><small id="hnext"></small></div></div>
     <p class="tip" id="tip"></p>
     <div class="row" style="margin-top:10px"><button class="btn" id="share">📋 Copier la couleur de demain</button><button class="btn" id="notif">🔔 Activer les alertes</button><button class="btn" id="notiftest" hidden>📨 Tester une notification</button></div>
+    <div class="row" id="filterrow" style="margin-top:10px" hidden>
+      <label for="notifmin">Me prévenir pour</label>
+      <select id="notifmin"><option value="1">Toutes les couleurs</option><option value="2">Blanc et rouge</option><option value="3">Rouge uniquement</option></select>
+    </div>
     <p class="tip" id="notifinfo" hidden></p>
   </section>
 
@@ -456,11 +460,14 @@ async function initSW(){
 }
 function notifOn(){return store.get("notif",false)}
 function pushOn(){return store.get("push",false)}
+function notifMin(){return +store.get("notifmin",1)||1}
 const NOTIF_OPTS={icon:"icon-192.png",badge:"badge-96.png"};
 function updNotifUI(){
   const on=notifOn();
   $("notif").textContent=on?"🔕 Couper les alertes":"🔔 Activer les alertes";
   $("notiftest").hidden=!(on&&pushOn());
+  $("filterrow").hidden=!on;
+  $("notifmin").value=String(notifMin());
   const i=$("notifinfo");
   if(!on){i.hidden=true;return}
   i.hidden=false;
@@ -489,7 +496,7 @@ async function subscribePush(){
       const {key}=await getJSON(relayBase()+"/vapid");
       sub=await swReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(key)});
     }
-    const r=await fetch(relayBase()+"/subscribe",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(sub.toJSON())});
+    const r=await fetch(relayBase()+"/subscribe",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...sub.toJSON(),min:notifMin()})});
     if(!r.ok)throw new Error(r.status);
     store.set("push",true);return true;
   }catch(e){store.set("push",false);return false}
@@ -516,6 +523,7 @@ function checkNotify(){
   const sig=tomorrow.dateJour+":"+c, prev=store.get("notified","");
   if(prev===sig)return;
   const changed=prev.startsWith(tomorrow.dateJour+":");
+  if(c<notifMin()&&!(changed&&+prev.split(":")[1]>=notifMin())){store.set("notified",sig);return}
   store.set("notified",sig);
   if(changed){showNotif(`⚠️ Tempo : changement, demain jour ${C[c].n.toUpperCase()} ${C[c].e}`,fmt(tomorrow.dateJour)+". La couleur annoncée ce matin a été modifiée par RTE.");return}
   const extra=c===3?" Pense à décaler tes gros appareils en heures creuses.":c===1?" Bon moment pour les machines !":"";
@@ -532,6 +540,12 @@ $("notif").onclick=async()=>{
   if(push)toast("Alertes activées, même appli fermée ✅");
   else{await showNotif("Alertes Tempo activées ✅","Tu seras prévenu quand l'appli est ouverte.");}
   store.set("notified","");checkNotify();
+};
+$("notifmin").onchange=async()=>{
+  store.set("notifmin",+$("notifmin").value);
+  const labels={1:"toutes les couleurs",2:"jours blancs et rouges",3:"jours rouges uniquement"};
+  if(pushOn())await subscribePush();
+  toast("Alertes : "+labels[notifMin()]);
 };
 $("notiftest").onclick=async()=>{
   $("notiftest").disabled=true;
