@@ -121,6 +121,20 @@ details summary{cursor:pointer;font-weight:600;color:var(--fg)}
 .big small{color:var(--muted);font-size:11px}
 .tbl input{width:100%;min-width:76px;text-align:right;font-family:var(--mono);padding:7px 9px}
 .good{color:var(--ok);text-shadow:0 0 14px #3ef0a066}.bad{color:#ff6b7a}
+.prevlist{display:flex;flex-direction:column;gap:8px}
+.prev{display:grid;grid-template-columns:7.6em 1fr auto;gap:4px 12px;align-items:center;padding:10px 12px;border-radius:14px;background:var(--glass);border:1px solid var(--line)}
+.prev .pd{font-family:var(--display);font-size:12px;font-weight:600;line-height:1.25;text-transform:capitalize}
+.prev .pd small{display:block;white-space:nowrap;font-family:var(--body);font-weight:400;color:var(--muted);font-size:11px;text-transform:none}
+.prev .pbar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--glass2)}
+.prev .pbar i{display:block;height:100%}
+.prev .pbar .b{background:var(--bleu)} .prev .pbar .w{background:var(--blanc)} .prev .pbar .r{background:var(--rouge)}
+.prev .pp{font-family:var(--mono);font-size:13px;font-weight:700;text-align:right;white-space:nowrap}
+.prev .pp[data-c="1"]{color:var(--bleu2)} .prev .pp[data-c="2"]{color:#fff} .prev .pp[data-c="3"]{color:#ff8f9a}
+.prev .pr{grid-column:2 / 4;font-size:11.5px;color:var(--muted);line-height:1.35}
+.prev[data-risk="1"]{border-color:color-mix(in srgb,var(--blanc) 40%,transparent)}
+.prev[data-risk="2"]{border-color:color-mix(in srgb,var(--rouge) 55%,transparent);box-shadow:0 0 18px -8px var(--rouge)}
+.prev.tendance{opacity:.78}
+.prevsrc{font-size:11px}.prevsrc a{color:var(--muted)}
 .toast{position:fixed;z-index:5;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#ffd84a;color:#141000;font-weight:700;padding:10px 18px;border-radius:999px;font-size:13px;box-shadow:0 8px 30px -6px #ffd84a99}
 @media (prefers-reduced-motion:no-preference){
   .day{animation:rise .6s cubic-bezier(.2,.8,.2,1) both} #d0{animation-delay:.1s}
@@ -158,6 +172,12 @@ details summary{cursor:pointer;font-weight:600;color:var(--fg)}
   </section>
 
   <div class="alertband" id="alertband" hidden></div>
+
+  <section class="card" id="prevcard">
+    <h2>Prévisions sur 7 jours</h2>
+    <div id="prevlist" class="prevlist"><p class="tip" style="margin:0">Chargement des prévisions…</p></div>
+    <p class="tip prevsrc">Estimations, pas des couleurs officielles. Prévisions <a href="https://www.calendrier-tempo.fr" target="_blank" rel="noopener">calendrier-tempo.fr</a> (licence CC BY 4.0), mises à jour chaque jour.</p>
+  </section>
 
   <section class="card">
     <h2>Jours restants · saison <span id="season"></span></h2>
@@ -388,7 +408,8 @@ function renderCounts(){
   const s=seasonOf(new Date()); $("season").textContent=s.replace("-","–");
   const y=+s.slice(0,4), leap=((y+1)%4===0);
   const quota={1:leap?301:300,2:43,3:22}, used={1:0,2:0,3:0};
-  Object.entries(days).forEach(([d,c])=>{if(seasonOf(new Date(d+"T12:00:00"))===s&&used[c]!==undefined)used[c]++});
+  const todayIso=iso(new Date());
+  Object.entries(days).forEach(([d,c])=>{if(d<=todayIso&&seasonOf(new Date(d+"T12:00:00"))===s&&used[c]!==undefined)used[c]++});
   $("counts").innerHTML=[1,2,3].map(c=>{
     const left=Math.max(0,quota[c]-used[c]),pct=used[c]/quota[c]*100;
     const col=c===1?"var(--bleu)":c===2?"var(--blanc)":"var(--rouge)";
@@ -668,6 +689,45 @@ $("csv").onchange=e=>{
 
 $("relay").value=relayURL();
 $("relay").addEventListener("change",()=>{store.set("relay",$("relay").value.trim());try{swReg&&swReg.active&&swReg.active.postMessage({type:"relay",url:relayURL()})}catch(e){}store.set("notified","");load();toast($("relay").value.trim()?"Relais Kelwatt enregistré":"Relais Kelwatt retiré")});
+
+/* ---------- Prévisions (J+2 à J+15) ---------- */
+let prevData=store.get("prev",null);
+async function loadPrev(){
+  let j=null;
+  if(relayURL()){try{j=await getJSON(relayBase()+"/previsions")}catch(e){}}
+  if(!j||!Array.isArray(j.predictions)){try{j=await getJSON("https://www.calendrier-tempo.fr/api/predictions")}catch(e){}}
+  if(j&&Array.isArray(j.predictions)){prevData={list:j.predictions,at:j.generated_at||new Date().toISOString()};store.set("prev",prevData)}
+  renderPrev();
+}
+function renderPrev(){
+  const box=$("prevlist");
+  if(!prevData){box.innerHTML="<p class='tip' style='margin:0'>Prévisions indisponibles pour le moment. Elles réapparaîtront à la prochaine connexion.</p>";return}
+  const tIso=iso(new Date()), tmr=new Date();tmr.setDate(tmr.getDate()+1);const mIso=iso(tmr);
+  // Jours après demain, triés par date ; un jour déjà officiel n'est pas une prévision
+  const list=prevData.list.filter(p=>p&&p.date>mIso&&!(days[p.date]>0&&p.confirmed)).sort((a,b)=>a.date.localeCompare(b.date));
+  if(!list.length){box.innerHTML="<p class='tip' style='margin:0'>Pas de prévision disponible au-delà de demain.</p>";return}
+  const shown=list.slice(0,7); // 7 jours après demain
+  const pct=x=>Math.round((+x||0)*100);
+  const codeOf={BLEU:1,BLANC:2,ROUGE:3};
+  box.innerHTML=shown.map(p=>{
+    const b=pct(p.probabilite_bleu),w=pct(p.probabilite_blanc),r=pct(p.probabilite_rouge);
+    const c=codeOf[p.couleur_predite]||([[b,1],[w,2],[r,3]].sort((x,y)=>y[0]-x[0])[0][1]);
+    const top=c===1?b:c===2?w:r;
+    const risk=r>=15?2:(w>=20||r>=5)?1:0;
+    const d=new Date(p.date+"T12:00:00");
+    const jour=d.toLocaleDateString("fr-FR",{weekday:"short"}).replace(".","");
+    const date=d.toLocaleDateString("fr-FR",{day:"numeric",month:"short"}).replace(".","");
+    const temp=p.temp_moy_prevue!=null?` · ${Math.round(p.temp_moy_prevue)}&nbsp;°C`:"";
+    const reason=String(p.raison||"").replace(/[<>&]/g,"");
+    return `<div class="prev${p.tendance?" tendance":""}" data-risk="${risk}">
+      <div class="pd">${jour} ${date}<small>${p.tendance?"tendance":"prévision"}${temp}</small></div>
+      <div class="pbar" role="img" aria-label="Bleu ${b} %, blanc ${w} %, rouge ${r} %"><i class="b" style="width:${b}%"></i><i class="w" style="width:${w}%"></i><i class="r" style="width:${r}%"></i></div>
+      <div class="pp" data-c="${c}">${C[c].n} ${top} %</div>
+      <div class="pr">${[c!==2&&w?`Blanc ${w} %`:"",c!==3&&r?`Rouge ${r} %`:"",reason].filter(Boolean).join(" · ")}</div>
+    </div>`}).join("");
+}
+renderPrev();loadPrev();
+setInterval(loadPrev,60*60000);
 
 /* ---------- Saisie manuelle ---------- */
 const SLOTS=[[1,0],[1,1],[2,0],[2,1],[3,0],[3,1]]; // [couleur, 0=HC 1=HP]
