@@ -35,6 +35,7 @@ body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--body);
   background-image:radial-gradient(120% 60% at 50% -10%,color-mix(in srgb,var(--mood) 28%,transparent),transparent 70%),radial-gradient(80% 50% at 100% 100%,color-mix(in srgb,var(--mood) 10%,transparent),transparent 70%);
   background-attachment:fixed;transition:background-color .6s}
 #fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+#fx2{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:4}
 main{position:relative;z-index:1;max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-top:18px}
 header{display:flex;justify-content:space-between;align-items:center;gap:8px}
 h1{font-family:var(--display);font-weight:800;font-size:28px;margin:0;letter-spacing:-.03em;line-height:1;
@@ -170,10 +171,12 @@ details summary{cursor:pointer;font-weight:600;color:var(--fg)}
 @keyframes introOut{to{opacity:0;transform:scale(1.15);visibility:hidden}}
 #intro.skip{animation:introOut .25s forwards}
 @media (prefers-reduced-motion:reduce){#intro{display:none}}
+.day .emo{display:none!important} /* la grosse bulle suffit à montrer la couleur */
 </style>
 </head>
 <body>
 <canvas id="fx" aria-hidden="true"></canvas>
+<canvas id="fx2" aria-hidden="true"></canvas>
 <div id="intro" aria-hidden="true">
   <div class="ib">
     <span class="ring"></span><span class="ring r2"></span>
@@ -217,6 +220,12 @@ details summary{cursor:pointer;font-weight:600;color:var(--fg)}
     <h2>En ce moment</h2>
     <div class="status"><span class="dot" id="hdot"></span><div><span id="hnow">—</span><small id="hnext"></small></div></div>
     <p class="tip" id="tip"></p>
+  </section>
+  <section class="card" id="meteocard">
+    <h2>Météo du fond</h2>
+    <div class="row"><input type="checkbox" id="meteo" style="width:20px;height:20px;accent-color:var(--bleu)"><label for="meteo" style="color:var(--fg)">Selon la météo de ma position</label></div>
+    <div class="row" style="margin-top:8px"><label for="ville">Ou ma ville</label><input id="ville" type="text" autocomplete="address-level2" placeholder="ex. Nancy" style="flex:1 1 140px"><button class="btn" id="villeok">OK</button></div>
+    <p class="tip" id="meteoinfo"></p>
   </section>
   <div class="alertband" id="alertband" hidden></div>
 
@@ -310,7 +319,7 @@ details summary{cursor:pointer;font-weight:600;color:var(--fg)}
   setTimeout(done,2600);
 })();
 const API="https://www.api-couleur-tempo.fr/api";
-const C={0:{n:"Inconnue",e:"❔"},1:{n:"Bleu",e:"💧"},2:{n:"Blanc",e:"❄️"},3:{n:"Rouge",e:"🔥"}};
+const C={0:{n:"Inconnue",e:"❔"},1:{n:"Bleu",e:"🔵"},2:{n:"Blanc",e:"⚪"},3:{n:"Rouge",e:"🔴"}};
 const TIPS={
  0:"Couleur pas encore publiée. Elle tombe en général en fin de matinée la veille.",
  1:"Jour bleu : c'est le moment de lancer les grosses machines, recharger la voiture et faire chauffer l'eau.",
@@ -321,44 +330,91 @@ const DEF_PRICES={1:[0.1325,0.1612],2:[0.1499,0.1871],3:[0.1575,0.7060]};
 const $=id=>document.getElementById(id);
 const store={get(k,d){try{const v=localStorage.getItem("tempo_"+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem("tempo_"+k,JSON.stringify(v))}catch(e){}}};
 
-/* ---------- Ambiance animée : gouttes (bleu), flocons (blanc), braises (rouge) ---------- */
+/* ---------- Ambiance animée : gouttes (pluie), flocons (neige), rayons (soleil) ----------
+   Rayons, nuages et lune derrière le contenu ; gouttes et flocons par-dessus, en transparence. */
 const fx=(()=>{
-  const cv=document.getElementById("fx"),ctx=cv.getContext("2d");
+  const back=document.getElementById("fx"),front=document.getElementById("fx2");
+  const bctx=back.getContext("2d"),fctx=front.getContext("2d");
   const still=matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let mode=-1,parts=[],W=0,H=0,dpr=1,raf=0;
-  function size(){dpr=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}
+  const TINT={0:[160,150,255],1:[150,195,255],2:[235,240,255],3:[255,140,120]};
+  const DEFAULT_WX={0:"cloud",1:"rain",2:"snow",3:"embers"};
+  let code=-1,wx="",parts=[],W=0,H=0,raf=0,t=0,flash=0,bolt=null;
+  function size(){const d=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;
+    for(const [c,x] of [[back,bctx],[front,fctx]]){c.width=W*d;c.height=H*d;x.setTransform(d,0,0,d,0,0)}}
+  const tint=a=>{const c=TINT[code]||TINT[0];return `rgba(${c[0]},${c[1]},${c[2]},${a})`};
   function make(init){
-    const p={x:Math.random()*W,y:init?Math.random()*H:(mode===3?H+10:-10),s:Math.random(),w:Math.random()*Math.PI*2};
-    if(mode===1){p.vy=2.5+p.s*4;p.vx=-.4;p.len=8+p.s*16}
-    else if(mode===2){p.vy=.4+p.s*1.1;p.vx=0;p.r=1+p.s*2.6}
-    else if(mode===3){p.vy=-(.6+p.s*1.6);p.vx=0;p.r=.8+p.s*2.2;p.life=1}
-    else{p.vy=.15+p.s*.3;p.vx=0;p.r=.6+p.s*1.2}
+    const p={x:Math.random()*W,y:init?Math.random()*H:-30,s:Math.random(),w:Math.random()*6.28};
+    if(wx==="rain"||wx==="storm"){p.vy=(wx==="storm"?9:6)+p.s*6;p.vx=wx==="storm"?-2:-.8;p.len=14+p.s*22;p.wd=1+p.s*1.6}
+    else if(wx==="snow"){p.vy=.5+p.s*1.3;p.r=2+p.s*5;p.rot=Math.random()*6.28;p.vr=(Math.random()-.5)*.02}
+    else if(wx==="embers"){p.y=init?Math.random()*H:H+10;p.vy=-(.6+p.s*1.6);p.r=1+p.s*2.4}
+    else if(wx==="cloud"||wx==="fog"){p.y=(wx==="fog"?Math.random():Math.random()*.5)*H;p.vx=.15+p.s*.3;p.r=110+p.s*170}
+    else if(wx==="stars"){p.y=Math.random()*H*.7;p.r=.5+p.s*1.4}
+    else{p.y=init?Math.random()*H:H+10;p.vy=-(.15+p.s*.35);p.r=1+p.s*2} // poussières dorées au soleil
     return p;
   }
+  const COUNT={rain:90,storm:140,snow:70,embers:55,cloud:8,fog:10,stars:90,clear:28};
+  function drawSun(){
+    const cx=W*.88,cy=-20,R=Math.hypot(W,H)*1.1;
+    bctx.save();bctx.translate(cx,cy);bctx.rotate(t*.0008);
+    for(let i=0;i<14;i++){bctx.rotate(Math.PI*2/14);const a=i%2?.22:.12;
+      const g=bctx.createLinearGradient(0,0,0,R);g.addColorStop(0,`rgba(255,226,140,${a})`);g.addColorStop(.6,`rgba(255,226,140,${a*.25})`);g.addColorStop(1,"rgba(255,226,140,0)");
+      bctx.fillStyle=g;bctx.beginPath();bctx.moveTo(0,0);bctx.lineTo(-R*.06,R);bctx.lineTo(R*.06,R);bctx.closePath();bctx.fill()}
+    bctx.restore();
+    const g=bctx.createRadialGradient(cx,cy,0,cx,cy,W*.6);g.addColorStop(0,"rgba(255,236,170,.55)");g.addColorStop(.3,"rgba(255,210,120,.18)");g.addColorStop(1,"rgba(255,210,120,0)");
+    bctx.fillStyle=g;bctx.fillRect(0,0,W,H);
+    // rayons qui passent aussi par-dessus l'écran, très légers
+    fctx.save();fctx.translate(cx,cy);fctx.rotate(t*.0008+.12);
+    for(let i=0;i<7;i++){fctx.rotate(Math.PI*2/7);const g2=fctx.createLinearGradient(0,0,0,R*.8);g2.addColorStop(0,"rgba(255,235,170,.10)");g2.addColorStop(1,"rgba(255,235,170,0)");
+      fctx.fillStyle=g2;fctx.beginPath();fctx.moveTo(0,0);fctx.lineTo(-R*.035,R*.8);fctx.lineTo(R*.035,R*.8);fctx.closePath();fctx.fill()}
+    fctx.restore();
+  }
+  function drawMoon(){const cx=W*.6,cy=30,g=bctx.createRadialGradient(cx,cy,0,cx,cy,150);g.addColorStop(0,"rgba(255,255,255,.22)");g.addColorStop(1,"rgba(255,255,255,0)");
+    bctx.fillStyle=g;bctx.fillRect(0,0,W,H);bctx.fillStyle="rgba(240,244,255,.9)";bctx.beginPath();bctx.arc(cx,cy,15,0,7);bctx.fill();bctx.fillStyle="rgba(6,8,15,.95)";bctx.beginPath();bctx.arc(cx+7,cy-4,13,0,7);bctx.fill()}
+  function flake(x,y,r,rot,a){
+    fctx.save();fctx.translate(x,y);fctx.rotate(rot);fctx.strokeStyle=`rgba(255,255,255,${a})`;fctx.lineWidth=Math.max(1,r/4);fctx.lineCap="round";
+    for(let i=0;i<6;i++){fctx.rotate(Math.PI/3);fctx.beginPath();fctx.moveTo(0,0);fctx.lineTo(0,r);fctx.moveTo(0,r*.55);fctx.lineTo(r*.28,r*.78);fctx.moveTo(0,r*.55);fctx.lineTo(-r*.28,r*.78);fctx.stroke()}
+    fctx.restore();
+  }
+  function newBolt(){const pts=[[W*(.2+Math.random()*.6),0]];while(pts[pts.length-1][1]<H*.65){const [x,y]=pts[pts.length-1];pts.push([x+(Math.random()-.5)*70,y+20+Math.random()*40])}return pts}
   function frame(){
-    ctx.clearRect(0,0,W,H);
+    t++;bctx.clearRect(0,0,W,H);fctx.clearRect(0,0,W,H);
+    if(wx==="clear")drawSun();
+    if(wx==="stars")drawMoon();
     for(const p of parts){
-      p.w+=.02; p.y+=p.vy; p.x+=p.vx+(mode===2?Math.sin(p.w)*.5:mode===3?Math.sin(p.w*1.7)*.6:0);
-      if(mode===1){ctx.strokeStyle=`rgba(127,180,255,${.15+p.s*.35})`;ctx.lineWidth=1+p.s;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+p.vx*3,p.y-p.len);ctx.stroke()}
-      else{
-        let col=mode===2?`rgba(255,255,255,${.35+p.s*.5})`:mode===3?`rgba(${255},${90+p.s*120|0},${60},${(.4+p.s*.6)*Math.max(0,p.y/H)})`:`rgba(160,150,255,${.15+p.s*.25})`;
-        ctx.fillStyle=col;ctx.shadowColor=mode===3?"#ff5a3c":mode===2?"#fff":"transparent";ctx.shadowBlur=mode===0?0:8;
-        ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,7);ctx.fill();ctx.shadowBlur=0;
+      p.w+=.02;
+      if(wx==="rain"||wx==="storm"){
+        p.y+=p.vy;p.x+=p.vx;
+        const g=fctx.createLinearGradient(p.x,p.y-p.len,p.x,p.y);g.addColorStop(0,tint(0));g.addColorStop(1,tint(.28+p.s*.35));
+        fctx.strokeStyle=g;fctx.lineWidth=p.wd;fctx.lineCap="round";fctx.beginPath();fctx.moveTo(p.x-p.vx*2.5,p.y-p.len);fctx.lineTo(p.x,p.y);fctx.stroke();
+        fctx.fillStyle=tint(.35+p.s*.35);fctx.beginPath();fctx.arc(p.x,p.y,p.wd*.9,0,7);fctx.fill();
+        if(p.y>H+10){ // petite éclaboussure en bas
+          fctx.strokeStyle=tint(.25);fctx.lineWidth=1;fctx.beginPath();fctx.ellipse(p.x,H-4,6+p.s*6,2,0,0,7);fctx.stroke();}
       }
-      if(p.y>H+20||p.y<-30||p.x<-20||p.x>W+20)Object.assign(p,make(false));
+      else if(wx==="snow"){p.y+=p.vy;p.x+=Math.sin(p.w)*.6;p.rot+=p.vr;
+        const a=.35+p.s*.45; if(p.r>4)flake(p.x,p.y,p.r,p.rot,a);else{fctx.fillStyle=`rgba(255,255,255,${a})`;fctx.beginPath();fctx.arc(p.x,p.y,p.r*.6,0,7);fctx.fill()}}
+      else if(wx==="cloud"||wx==="fog"){p.x+=p.vx;const g=bctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r);g.addColorStop(0,`rgba(200,210,230,${wx==="fog"?.11:.14})`);g.addColorStop(1,"rgba(200,210,230,0)");bctx.fillStyle=g;bctx.fillRect(p.x-p.r,p.y-p.r,p.r*2,p.r*2);if(p.x-p.r>W)p.x=-p.r}
+      else if(wx==="stars"){const a=.25+.6*Math.abs(Math.sin(p.w*(.5+p.s)));bctx.fillStyle=`rgba(255,255,255,${a})`;bctx.beginPath();bctx.arc(p.x,p.y,p.r,0,7);bctx.fill()}
+      else if(wx==="embers"){p.y+=p.vy;p.x+=Math.sin(p.w*1.7)*.6;const a=(.4+p.s*.6)*Math.max(0,p.y/H);
+        bctx.fillStyle=`rgba(255,${90+p.s*120|0},60,${a})`;bctx.shadowColor="#ff5a3c";bctx.shadowBlur=8;bctx.beginPath();bctx.arc(p.x,p.y,p.r,0,7);bctx.fill();bctx.shadowBlur=0}
+      else{p.y+=p.vy;p.x+=Math.sin(p.w)*.3;fctx.fillStyle=`rgba(255,230,160,${.18+p.s*.3})`;fctx.beginPath();fctx.arc(p.x,p.y,p.r,0,7);fctx.fill()}
+      if(p.y>H+20||p.y<-40||p.x<-320||p.x>W+320)Object.assign(p,make(false));
+    }
+    if(wx==="storm"){
+      if(!flash&&Math.random()<.006){flash=14;bolt=newBolt()}
+      if(flash){flash--;fctx.fillStyle=`rgba(255,255,255,${flash/50})`;fctx.fillRect(0,0,W,H);
+        if(bolt&&flash>8){bctx.strokeStyle="rgba(255,255,255,.95)";bctx.lineWidth=3;bctx.shadowColor="#fff";bctx.shadowBlur=20;bctx.beginPath();bolt.forEach(([x,y],i)=>i?bctx.lineTo(x,y):bctx.moveTo(x,y));bctx.stroke();bctx.shadowBlur=0}}
     }
     raf=requestAnimationFrame(frame);
   }
-  function set(m){
-    if(m===mode)return; mode=m; size();
-    const n=Math.round((mode===1?70:mode===2?60:mode===3?55:30)*Math.min(1.6,W/420));
-    parts=Array.from({length:n},()=>make(true));
-    cancelAnimationFrame(raf);
-    if(still){frame();cancelAnimationFrame(raf)}else frame();
+  function set(c,w){
+    w=w||DEFAULT_WX[c]||"cloud";
+    if(c===code&&w===wx)return; code=c;wx=w;size();
+    parts=Array.from({length:Math.round((COUNT[wx]||30)*Math.min(1.6,W/420))},()=>make(true));
+    cancelAnimationFrame(raf);frame();if(still)cancelAnimationFrame(raf);
   }
-  addEventListener("resize",()=>{const m=mode;mode=-1;set(m)});
-  document.addEventListener("visibilitychange",()=>{if(document.hidden)cancelAnimationFrame(raf);else if(!still){cancelAnimationFrame(raf);frame()}});
-  return {set};
+  addEventListener("resize",()=>{const c=code,w=wx;code=-1;set(c,w)});
+  document.addEventListener("visibilitychange",()=>{cancelAnimationFrame(raf);if(!document.hidden&&!still)frame()});
+  return {set,get:()=>({code,wx})};
 })();
 
 let days=store.get("days",{}); // {"2026-11-08":1}
@@ -446,7 +502,7 @@ function paintDay(el,j,fallbackDate){
 function render(){
   const now=new Date(),tm=new Date(now);tm.setDate(tm.getDate()+1);
   paintDay($("d0"),today,iso(now)); paintDay($("d1"),tomorrow,iso(tm));
-  document.body.dataset.mood=(today&&today.codeJour)||0; fx.set((today&&today.codeJour)||0);
+  document.body.dataset.mood=(today&&today.codeJour)||0; fx.set((today&&today.codeJour)||0,meteoFx());
   const ct=today&&today.codeJour||0;
   $("tip").textContent=TIPS[ct];
   renderCounts(); renderCal(); renderCalc(); renderHC();
@@ -779,6 +835,63 @@ function renderPrev(){
 }
 renderPrev();loadPrev();
 setInterval(loadPrev,60*60000);
+
+/* ---------- Météo locale pour le fond (Open-Meteo, gratuit, sans clé) ---------- */
+// Par défaut : météo de Metz (57), tant que l'utilisateur n'a rien choisi
+let meteo=store.get("meteo",null)||{on:true,lat:49.12,lon:6.18,ville:"Metz"}; // {on, lat, lon, ville, wx, at}
+function wxFromCode(c,day){
+  if([95,96,99].includes(c))return "storm";
+  if([71,73,75,77,85,86].includes(c))return "snow";
+  if([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(c))return "rain";
+  if([45,48].includes(c))return "fog";
+  if([2,3].includes(c))return "cloud";
+  return day?"clear":"stars";
+}
+function meteoFx(){return meteo&&meteo.on&&meteo.wx?meteo.wx:null}
+async function refreshMeteo(){
+  if(!meteo||!meteo.on||meteo.lat==null)return;
+  try{
+    // Modèles Météo-France (AROME/ARPEGE), avec repli sur le modèle par défaut si besoin
+    const base=`https://api.open-meteo.com/v1/forecast?latitude=${meteo.lat.toFixed(2)}&longitude=${meteo.lon.toFixed(2)}&current=weather_code,is_day&timezone=auto`;
+    let j=null;
+    try{j=await getJSON(base+"&models=meteofrance_seamless");if(!j.current||j.current.weather_code==null)j=null}catch(e){}
+    if(!j)j=await getJSON(base);
+    meteo.wx=wxFromCode(j.current.weather_code,j.current.is_day);meteo.at=Date.now();store.set("meteo",meteo);
+    fx.set((today&&today.codeJour)||0,meteoFx());updMeteoUI();
+  }catch(e){}
+}
+const WX_LABEL={clear:"soleil ☀️",stars:"nuit claire 🌙",cloud:"nuageux ☁️",rain:"pluie 🌧️",snow:"neige ❄️",fog:"brouillard 🌫️",storm:"orage ⛈️"};
+function updMeteoUI(){
+  const on=!!(meteo&&meteo.on);$("meteo").checked=on&&!meteo.ville; // cochée seulement en mode « ma position »
+  if(meteo&&meteo.ville&&document.activeElement!==$("ville"))$("ville").value=meteo.ville;
+  const lieu=meteo&&meteo.ville?"Météo de "+meteo.ville:"Météo de ta position";
+  $("meteoinfo").textContent=on?(meteo.wx?lieu+" : "+WX_LABEL[meteo.wx]+". Données Météo-France, mises à jour toutes les heures.":"Recherche de la météo…"):"Gouttes s'il pleut, flocons s'il neige, rayons de soleil s'il fait beau. Sinon, l'effet suit la couleur Tempo.";
+}
+$("meteo").onchange=()=>{
+  if(!$("meteo").checked){meteo={on:false};store.set("meteo",meteo);fx.set((today&&today.codeJour)||0,null);updMeteoUI();return}
+  if(!navigator.geolocation){toast("Localisation indisponible sur ce téléphone");$("meteo").checked=false;return}
+  $("meteoinfo").textContent="Autorise la localisation pour connaître la météo de ta ville…";
+  navigator.geolocation.getCurrentPosition(pos=>{
+    meteo={on:true,lat:pos.coords.latitude,lon:pos.coords.longitude};store.set("meteo",meteo);$("ville").value="";updMeteoUI();refreshMeteo();
+  },()=>{$("meteo").checked=false;toast("Localisation refusée : le fond reste lié à la couleur Tempo");updMeteoUI()},{maximumAge:36e5,timeout:15000});
+};
+// Ville tapée à la main : pas besoin d'autoriser la localisation
+async function chercherVille(){
+  const q=$("ville").value.trim();
+  if(!q){meteo={on:false};store.set("meteo",meteo);fx.set((today&&today.codeJour)||0,null);updMeteoUI();toast("Météo désactivée");return}
+  $("villeok").disabled=true;
+  try{
+    const j=await getJSON("https://geocoding-api.open-meteo.com/v1/search?count=1&language=fr&format=json&name="+encodeURIComponent(q));
+    const r=j&&j.results&&j.results[0];
+    if(!r){toast("Ville introuvable : vérifie l'orthographe");return}
+    meteo={on:true,lat:r.latitude,lon:r.longitude,ville:r.name};store.set("meteo",meteo);
+    $("ville").value=r.name;updMeteoUI();await refreshMeteo();toast("Météo de "+r.name+" activée");
+  }catch(e){toast("Recherche impossible : vérifie ta connexion")}
+  finally{$("villeok").disabled=false}
+}
+$("villeok").onclick=chercherVille;
+$("ville").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();chercherVille()}});
+updMeteoUI();refreshMeteo();setInterval(refreshMeteo,60*60000);
 
 /* ---------- Saisie manuelle ---------- */
 const SLOTS=[[1,0],[1,1],[2,0],[2,1],[3,0],[3,1]]; // [couleur, 0=HC 1=HP]
